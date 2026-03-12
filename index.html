@@ -1,473 +1,630 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Crypto Scanner · PQC Assessment</title>
+  <title>Quantum Security Check</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Bebas+Neue&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:       #07080d;
-      --bg2:      #0a0b14;
-      --bg3:      #0d0e1a;
-      --border:   #131525;
-      --border2:  #1a1d2e;
-      --text:     #c8d0e0;
-      --dim:      #3a4060;
-      --red:      #ff2d55;
-      --orange:   #ff6b35;
-      --yellow:   #ffd60a;
-      --green:    #30d158;
-      --blue:     #0a84ff;
-      --cyan:     #64d2ff;
-      --gray:     #556080;
+      --bg:      #08090f;
+      --bg2:     #0c0d18;
+      --bg3:     #101220;
+      --border:  #181a2e;
+      --border2: #202340;
+      --text:    #d0d8f0;
+      --muted:   #5a6490;
+      --red:     #ff3355;
+      --orange:  #ff6b35;
+      --yellow:  #ffd60a;
+      --green:   #2ecc71;
+      --blue:    #3b82f6;
+      --teal:    #14b8a6;
     }
 
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: 'JetBrains Mono', monospace;
+      font-family: 'Inter', sans-serif;
       min-height: 100vh;
-      background-image:
-        radial-gradient(ellipse 70% 40% at 50% 0%, rgba(10,132,255,0.06) 0%, transparent 60%);
+      background-image: radial-gradient(ellipse 80% 35% at 50% 0%, rgba(59,130,246,0.07) 0%, transparent 70%);
     }
 
-    /* ── Header ── */
     header {
-      padding: 28px 32px 0;
+      max-width: 860px; margin: 0 auto;
+      padding: 36px 24px 28px;
       border-bottom: 1px solid var(--border);
     }
-    .header-inner {
-      max-width: 900px; margin: 0 auto;
-      display: flex; align-items: flex-end; justify-content: space-between;
-      flex-wrap: wrap; gap: 12px; padding-bottom: 20px;
+    .header-eyebrow {
+      font-size: 10px; font-weight: 600; letter-spacing: .2em;
+      color: var(--blue); margin-bottom: 10px;
+      font-family: 'JetBrains Mono', monospace;
     }
-    .logo-tag { font-size: 9px; color: var(--blue); letter-spacing: .22em; margin-bottom: 5px; }
-    h1 {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: 36px; letter-spacing: .06em; color: #e8ecf8; line-height: 1;
-    }
-    h1 span { color: var(--border2); font-size: 24px; }
-    .badge {
-      font-size: 9px; color: var(--dim); border: 1px solid var(--border2);
-      padding: 4px 10px; border-radius: 3px; letter-spacing: .1em;
-    }
+    h1 { font-size: 28px; font-weight: 700; color: #eef0ff; margin-bottom: 8px; }
+    .header-sub { font-size: 14px; color: var(--muted); line-height: 1.6; max-width: 520px; }
 
-    /* ── Main ── */
-    main { max-width: 900px; margin: 0 auto; padding: 28px 32px 60px; }
+    main { max-width: 860px; margin: 0 auto; padding: 28px 24px 80px; }
 
-    /* ── Input card ── */
-    .input-card {
+    .scan-box {
       background: var(--bg2); border: 1px solid var(--border);
-      border-radius: 6px; overflow: hidden; margin-bottom: 24px;
+      border-radius: 10px; overflow: hidden; margin-bottom: 10px;
     }
-    .input-bar {
-      display: flex; align-items: center; gap: 0;
-    }
-    .input-prefix {
-      padding: 0 14px; color: var(--dim); font-size: 13px;
-      border-right: 1px solid var(--border); height: 52px;
-      display: flex; align-items: center;
+    .scan-row { display: flex; }
+    .scan-prefix {
+      display: flex; align-items: center; padding: 0 14px;
+      font-family: 'JetBrains Mono', monospace; font-size: 13px;
+      color: var(--muted); border-right: 1px solid var(--border);
+      white-space: nowrap;
     }
     #domain-input {
       flex: 1; background: transparent; border: none; outline: none;
-      color: var(--text); font-family: inherit; font-size: 14px;
-      padding: 0 16px; height: 52px;
+      color: var(--text); font-family: 'Inter', sans-serif; font-size: 15px;
+      padding: 16px; height: 56px;
     }
-    #domain-input::placeholder { color: var(--border2); }
+    #domain-input::placeholder { color: #252840; }
     #scan-btn {
       background: var(--blue); color: #fff; border: none;
-      padding: 0 24px; height: 52px; cursor: pointer;
-      font-family: inherit; font-size: 11px; font-weight: 700;
-      letter-spacing: .12em; transition: background .2s;
-      white-space: nowrap;
+      padding: 0 28px; font-family: 'Inter', sans-serif;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: background .2s; white-space: nowrap;
     }
-    #scan-btn:hover:not(:disabled) { background: #3399ff; }
+    #scan-btn:hover:not(:disabled) { background: #5b9cf8; }
     #scan-btn:disabled { opacity: .4; cursor: not-allowed; }
-    .examples {
-      padding: 10px 16px; font-size: 10px; color: var(--dim);
+    .try-links {
+      padding: 9px 16px; font-size: 11px; color: var(--muted);
+      display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
       border-top: 1px solid var(--border);
-      display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
     }
-    .example-link {
-      color: var(--dim); cursor: pointer; text-decoration: underline;
-      text-underline-offset: 2px; transition: color .15s;
-    }
-    .example-link:hover { color: var(--blue); }
+    .try-link { color: var(--muted); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+    .try-link:hover { color: var(--blue); }
 
-    /* ── Score bar ── */
-    #score-section { display: none; margin-bottom: 24px; }
-    .score-card {
-      background: var(--bg2); border: 1px solid var(--border);
-      border-radius: 6px; padding: 20px 24px;
-      display: grid; grid-template-columns: auto 1fr auto;
-      gap: 24px; align-items: center;
-    }
-    .score-num {
-      font-family: 'Bebas Neue', sans-serif; font-size: 64px; line-height: 1;
-    }
-    .score-label { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
-    .score-sub { font-size: 10px; color: var(--dim); }
-    .score-bars { display: flex; gap: 5px; margin-top: 8px; }
-    .score-bar { width: 22px; height: 6px; border-radius: 2px; }
-    .risk-pills { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
-    .risk-pill {
-      font-size: 10px; font-weight: 700; letter-spacing: .08em;
-      padding: 5px 12px; border-radius: 3px; border: 1px solid;
-      white-space: nowrap;
-    }
-
-    /* ── Meta strip ── */
-    .meta-strip {
-      display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px;
-    }
-    .meta-chip {
-      font-size: 10px; padding: 4px 10px; border-radius: 3px;
-      border: 1px solid var(--border2); color: var(--dim);
-    }
-    .meta-chip.highlight { border-color: rgba(10,132,255,.3); color: var(--blue); }
-    .meta-chip.good   { border-color: rgba(48,209,88,.3); color: var(--green); }
-    .meta-chip.warn   { border-color: rgba(255,214,10,.3); color: var(--yellow); }
-
-    /* ── Section heading ── */
-    .section-head {
-      font-size: 9px; color: var(--dim); letter-spacing: .18em;
-      margin-bottom: 8px; padding-left: 2px;
-    }
-
-    /* ── Findings table ── */
-    .findings-group { margin-bottom: 20px; }
-    .findings-table {
-      border: 1px solid var(--border); border-radius: 4px; overflow: hidden;
-    }
-    .finding-row {
-      display: grid; grid-template-columns: 180px 1fr 110px;
-      padding: 11px 14px; gap: 12px; align-items: start;
-      border-top: 1px solid var(--border);
-      transition: background .12s;
-    }
-    .finding-row:first-child { border-top: none; }
-    .finding-row:hover { background: rgba(255,255,255,.02); }
-    .algo-name { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
-    .algo-nist { font-size: 9px; color: var(--dim); margin-top: 2px; }
-    .algo-bars { display: flex; gap: 3px; margin: 4px 0 3px; }
-    .algo-bar  { width: 14px; height: 4px; border-radius: 1px; }
-    .rating-label { font-size: 9px; }
-    .ctx-main  { font-size: 11px; color: #6070a0; margin-bottom: 3px; }
-    .ctx-src   { font-size: 10px; color: var(--dim); }
-    .ctx-migrate { font-size: 10px; color: var(--green); margin-top: 5px; }
-    .threat-badge {
-      font-size: 9px; font-weight: 700; letter-spacing: .08em;
-      padding: 3px 8px; border-radius: 2px; border: 1px solid;
-      text-align: center; white-space: nowrap;
-    }
-    .quantum-text { font-size: 9px; color: var(--dim); margin-top: 4px; text-align: right; }
-
-    /* ── Info note (SKI) ── */
-    .info-note {
-      padding: 8px 14px; font-size: 10px; color: var(--dim);
-      border-top: 1px solid var(--border); font-style: italic;
-    }
-
-    /* ── Risk boxes ── */
-    .risk-box {
-      border-radius: 5px; border: 1px solid; padding: 14px 16px;
-      margin-bottom: 12px; font-size: 11px; line-height: 1.7;
-    }
-    .risk-box.hndl   { border-color: rgba(255,107,53,.3); background: rgba(255,107,53,.05); color: #ff9060; }
-    .risk-box.imp    { border-color: rgba(255,214,10,.3);  background: rgba(255,214,10,.05); color: #ffd60a; }
-    .risk-box.safe   { border-color: rgba(48,209,88,.3);   background: rgba(48,209,88,.05);  color: var(--green); }
-    .risk-title { font-size: 10px; font-weight: 700; letter-spacing: .1em; margin-bottom: 6px; }
-
-    /* ── Spinner ── */
+    #status { font-size: 12px; color: var(--muted); min-height: 20px; margin-bottom: 20px; }
     .spinner {
-      display: inline-block; width: 14px; height: 14px;
+      display: inline-block; width: 12px; height: 12px;
       border: 2px solid var(--blue); border-top-color: transparent;
       border-radius: 50%; animation: spin .7s linear infinite;
-      vertical-align: middle; margin-right: 8px;
+      vertical-align: middle; margin-right: 6px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    .verdict-card {
+      border-radius: 10px; border: 1px solid var(--border2);
+      padding: 24px; margin-bottom: 24px;
+      display: grid; grid-template-columns: auto 1fr;
+      gap: 20px; align-items: center;
+    }
+    .verdict-emoji { font-size: 52px; line-height: 1; }
+    .verdict-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+    .verdict-domain { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+    .verdict-plain { font-size: 14px; line-height: 1.7; color: #8090c0; }
+
+    .section { margin-bottom: 28px; }
+    .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .section-icon {
+      width: 34px; height: 34px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; flex-shrink: 0;
+    }
+    .section-title { font-size: 15px; font-weight: 700; color: #e0e8ff; }
+    .section-desc { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+
+    .finding-card {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden; margin-bottom: 10px;
+    }
+    .finding-top {
+      padding: 16px 18px;
+      display: grid; grid-template-columns: 1fr auto;
+      gap: 12px; align-items: start;
+    }
+    .finding-algo { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .finding-plain { font-size: 13px; color: #8090c0; line-height: 1.55; }
+    .status-pill {
+      font-size: 11px; font-weight: 700; padding: 5px 12px;
+      border-radius: 20px; border: 1px solid; white-space: nowrap;
+      flex-shrink: 0; text-align: center;
+    }
+
+    .detail-toggle {
+      width: 100%; background: none; border: none; border-top: 1px solid var(--border);
+      color: var(--muted); font-family: 'Inter', sans-serif;
+      font-size: 11px; padding: 9px 18px; cursor: pointer;
+      text-align: left; transition: color .15s; display: flex;
+      align-items: center; gap: 6px;
+    }
+    .detail-toggle:hover { color: var(--blue); }
+
+    .finding-details {
+      border-top: 0px solid var(--border);
+      padding: 0 18px;
+      max-height: 0; overflow: hidden;
+      transition: max-height .35s ease, padding .35s ease;
+    }
+    .finding-details.open { max-height: 800px; padding: 16px 18px; border-top: 1px solid var(--border); }
+
+    .detail-grid { display: grid; grid-template-columns: 140px 1fr; gap: 10px 16px; }
+    .detail-label { font-size: 11px; color: var(--muted); font-weight: 600; padding-top: 1px; }
+    .detail-value { font-size: 12px; color: var(--text); line-height: 1.6; }
+    .detail-value.code { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+    .detail-value.good { color: var(--green); }
+    .detail-value.warn { color: var(--yellow); }
+
+    .cert-meta {
+      background: var(--bg3); border: 1px solid var(--border);
+      border-radius: 8px; padding: 14px 16px; margin-bottom: 10px;
+    }
+    .cert-row { display: grid; grid-template-columns: 100px 1fr; gap: 4px 12px; font-size: 12px; margin-bottom: 4px; }
+    .cert-key { color: var(--muted); }
+    .cert-val { font-family: 'JetBrains Mono', monospace; color: var(--text); word-break: break-all; }
+
+    .action-card { border-radius: 10px; border: 1px solid; padding: 18px 20px; margin-bottom: 10px; }
+    .action-title { font-size: 13px; font-weight: 700; margin-bottom: 10px; }
+    .action-body { font-size: 13px; line-height: 1.75; color: #8090c0; }
+    .action-body strong { color: var(--text); }
+
+    .timeline { display: flex; border-radius: 6px; overflow: hidden; height: 8px; margin: 14px 0 4px; }
+    .tl-safe { background: var(--border2); }
+    .tl-danger { flex: 1; opacity: .8; }
+    .tl-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+    .tl-note { font-size: 10px; color: var(--muted); margin-top: 14px; }
+
+    .info-note {
+      background: rgba(59,130,246,.06); border: 1px solid rgba(59,130,246,.15);
+      border-radius: 8px; padding: 12px 16px;
+      font-size: 12px; color: #6080b0; line-height: 1.6; margin-bottom: 10px;
+    }
+    .error-box {
+      background: rgba(255,51,85,.07); border: 1px solid rgba(255,51,85,.2);
+      border-radius: 8px; padding: 16px; color: var(--red); font-size: 13px; line-height: 1.6;
+    }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
+
+    footer { text-align: center; padding: 24px; font-size: 11px; color: var(--border2); border-top: 1px solid var(--border); }
+
     @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(10px); }
+      from { opacity: 0; transform: translateY(8px); }
       to   { opacity: 1; transform: translateY(0); }
     }
-    .fade-up { animation: fadeUp .35s ease forwards; }
+    .fade-up { animation: fadeUp .3s ease forwards; }
 
-    /* ── Error ── */
-    .error-box {
-      background: rgba(255,45,85,.07); border: 1px solid rgba(255,45,85,.25);
-      border-radius: 5px; padding: 14px 16px; color: var(--red); font-size: 12px;
+    @media (max-width: 600px) {
+      .verdict-card { grid-template-columns: 1fr; }
+      .verdict-emoji { font-size: 36px; }
+      .finding-top { grid-template-columns: 1fr; }
+      .detail-grid { grid-template-columns: 1fr; }
     }
-
-    /* ── Status line ── */
-    #status { font-size: 11px; color: var(--dim); margin-bottom: 16px; min-height: 18px; }
-
-    /* Colour helpers */
-    .c-red    { color: var(--red); }
-    .c-orange { color: var(--orange); }
-    .c-yellow { color: var(--yellow); }
-    .c-green  { color: var(--green); }
-    .c-blue   { color: var(--blue); }
-    .c-gray   { color: var(--gray); }
   </style>
 </head>
 <body>
 
 <header>
-  <div class="header-inner">
-    <div>
-      <div class="logo-tag">◈ POST-QUANTUM CRYPTOGRAPHY</div>
-      <h1>CRYPTO SCANNER <span>/ PQC</span></h1>
-    </div>
-    <div class="badge">LIVE TLS INSPECTION</div>
-  </div>
+  <div class="header-eyebrow">◈ QUANTUM SECURITY SCANNER</div>
+  <h1>Is this website quantum-safe?</h1>
+  <p class="header-sub">
+    Quantum computers — expected around 2030 — will be able to break the encryption most websites use today.
+    This tool checks how prepared a site is, and explains what it means in plain English.
+  </p>
 </header>
 
 <main>
-
-  <!-- Input -->
-  <div class="input-card">
-    <div class="input-bar">
-      <div class="input-prefix">https://</div>
-      <input id="domain-input" type="text" placeholder="youtube.com  or  api.example.com:8443"
+  <div class="scan-box">
+    <div class="scan-row">
+      <div class="scan-prefix">https://</div>
+      <input id="domain-input" type="text" placeholder="youtube.com · ifsca.gov.in · cloudflare.com"
              autocomplete="off" spellcheck="false"/>
-      <button id="scan-btn" onclick="scan()">▶ SCAN</button>
+      <button id="scan-btn" onclick="scan()">Check →</button>
     </div>
-    <div class="examples">
-      <span style="color:var(--border2)">Try:</span>
-      <span class="example-link" onclick="setDomain('youtube.com')">youtube.com</span>
-      <span class="example-link" onclick="setDomain('cloudflare.com')">cloudflare.com</span>
-      <span class="example-link" onclick="setDomain('ifsca.gov.in')">ifsca.gov.in</span>
-      <span class="example-link" onclick="setDomain('github.com')">github.com</span>
-      <span class="example-link" onclick="setDomain('api.stripe.com')">api.stripe.com</span>
+    <div class="try-links">
+      <span>Try:</span>
+      <span class="try-link" onclick="setDomain('youtube.com')">youtube.com</span>
+      <span class="try-link" onclick="setDomain('cloudflare.com')">cloudflare.com</span>
+      <span class="try-link" onclick="setDomain('ifsca.gov.in')">ifsca.gov.in</span>
+      <span class="try-link" onclick="setDomain('github.com')">github.com</span>
+      <span class="try-link" onclick="setDomain('stripe.com')">stripe.com</span>
     </div>
   </div>
 
-  <!-- Status -->
   <div id="status"></div>
-
-  <!-- Score -->
-  <div id="score-section"></div>
-
-  <!-- Results -->
   <div id="results"></div>
-
 </main>
 
+<footer>Scans are live TLS handshakes · No data stored · Built for education</footer>
+
 <script>
-  // ── CONFIG ─────────────────────────────────────────────────────────────────
-  // Replace with your actual Render URL after deployment
-  const API_BASE = "https://pqc-3p1d.onrender.com";
+const API_BASE = "https://pqc-3p1d.onrender.com";
 
-  // ── Colour maps ────────────────────────────────────────────────────────────
-  const THREAT_COLOR = {
-    CRITICAL:"#ff2d55", HIGH:"#ff6b35", MEDIUM:"#ffd60a",
-    LOW:"#30d158", NONE:"#0a84ff", UNKNOWN:"#556080"
+// Plain English descriptions
+const ALGO_PLAIN = {
+  "X25519+ML-KEM-768":    "Uses a hybrid lock combining a classical key and a new quantum-resistant key. Even a quantum computer cannot break this.",
+  "SecP256r1+ML-KEM-768": "Hybrid key exchange: classical P-256 plus quantum-safe ML-KEM. Well protected against quantum attacks.",
+  "X25519+ML-KEM-1024":   "Strongest hybrid key exchange available. Fully future-proof against quantum computers.",
+  "X25519+Kyber768":      "An earlier draft of the quantum-safe hybrid standard. Good, but not the finalised version.",
+  "X25519":               "Fast and secure today, but a quantum computer running Shor's algorithm could break it.",
+  "ECDH-P256":            "The standard key exchange used by most websites today. A quantum computer could crack it.",
+  "ECDH-P384":            "Stronger elliptic curve — still broken by a quantum computer. Better classical security, same quantum problem.",
+  "ECDH-P521":            "Largest standard elliptic curve. Still vulnerable to quantum attacks.",
+  "RSA-2048":             "The algorithm most of the internet was built on. A quantum computer would break 2048-bit RSA in hours.",
+  "RSA-3072":             "Larger RSA key — harder for classical computers, but still solvable by a quantum computer.",
+  "RSA-4096":             "Very large RSA key. Still quantum-vulnerable.",
+  "ML-KEM-768":           "The new NIST standard for quantum-safe key exchange (FIPS 203). Fully resistant to quantum attacks.",
+  "ML-KEM-1024":          "Highest security quantum-safe key exchange. NIST standard.",
+  "AES-256-GCM":          "Gold standard for encrypting data. 256-bit keys are large enough to resist quantum attacks.",
+  "AES-128-GCM":          "Good encryption, but 128-bit keys are weakened by quantum — effectively 64-bit security post-quantum.",
+  "AES-256-CBC":          "Strong encryption but an older mode. Secure, though GCM is preferred.",
+  "AES-128-CBC":          "Older, weaker mode. 128-bit key is also weakened by quantum.",
+  "ChaCha20-Poly1305":    "Modern cipher with 256-bit key. Quantum-resistant for practical purposes.",
+  "3DES":                 "Very old — Triple DES. Officially deprecated. Should not be in use.",
+  "RC4":                  "Broken cipher. Should never be used.",
+  "ECDSA-P256":           "Signs this site's certificate. A quantum computer could forge this signature and impersonate the server.",
+  "ECDSA-P384":           "Stronger ECDSA signature. Same quantum vulnerability.",
+  "RSA-PKCS1-2048":       "Classic RSA signature on the certificate. A quantum computer could crack this.",
+  "RSA-PKCS1-3072":       "Larger RSA signature. Same quantum weakness.",
+  "RSA-PKCS1-4096":       "Large RSA signature. Quantum-vulnerable.",
+  "RSA-PSS-2048":         "RSA-PSS signature scheme — quantum-vulnerable.",
+  "Ed25519":              "Modern signature, fast and clean — but still quantum-vulnerable.",
+  "ML-DSA-44":            "New quantum-safe signature standard (FIPS 204). Fully resistant.",
+  "ML-DSA-65":            "Quantum-safe signature, medium security level. NIST standard.",
+  "ML-DSA-87":            "Highest security quantum-safe signature. NIST standard.",
+  "SHA-256":              "Hashing algorithm. Grover's algorithm halves its effective security — still safe for now, SHA-384 preferred.",
+  "SHA-384":              "Stronger hash. 192-bit post-quantum security. Recommended.",
+  "SHA-512":              "Strongest standard hash. Fully quantum-resistant.",
+  "SHA-1":                "Old hash — already broken by classical computers. Should not appear in signatures.",
+  "MD5":                  "Completely broken hash. Should never appear.",
+  "TLS-1.3":              "Latest and most secure HTTPS protocol version.",
+  "TLS-1.2":              "Older HTTPS protocol. Still widely used but cannot use quantum-safe key exchange.",
+  "TLS-1.1":              "Deprecated. Should not be accepted by modern servers.",
+  "TLS-1.0":              "Very old. Deprecated.",
+};
+
+const ALGO_HOW_QUANTUM = {
+  "X25519":          "Shor's Algorithm: a quantum computer solves the elliptic curve discrete logarithm — the math problem that makes this secure — in polynomial time instead of exponential time.",
+  "ECDH-P256":       "Shor's Algorithm: solves the discrete logarithm on the P-256 elliptic curve. Classical computers would take billions of years; a mature quantum computer could do it in hours.",
+  "ECDH-P384":       "Shor's Algorithm: same attack, just needs a slightly larger quantum processor to run.",
+  "ECDH-P521":       "Shor's Algorithm: needs more qubits than P-256, but still broken by a sufficiently powerful quantum computer.",
+  "RSA-2048":        "Shor's Algorithm: factors the large numbers that RSA security depends on. Classical computers would take thousands of years. A CRQC could do it in hours.",
+  "RSA-3072":        "Shor's Algorithm: same factoring attack. A slightly larger quantum computer is needed but it's the same vulnerability.",
+  "RSA-4096":        "Shor's Algorithm: still broken by quantum, just requires more qubits.",
+  "ECDSA-P256":      "Shor's Algorithm: the same math that breaks ECDH key exchange also breaks ECDSA signatures. An attacker could forge the website's certificate.",
+  "ECDSA-P384":      "Shor's Algorithm: same signature forgery attack on a larger curve.",
+  "RSA-PKCS1-2048":  "Shor's Algorithm: RSA signatures rely on the same integer factoring that quantum computers can break.",
+  "RSA-PSS-2048":    "Shor's Algorithm: the PSS padding scheme doesn't protect against quantum factoring of the underlying RSA key.",
+  "Ed25519":         "Shor's Algorithm: Ed25519 is based on elliptic curves, susceptible to the same attack.",
+  "AES-128-GCM":     "Grover's Algorithm: quantum search halves effective key length from 128 bits to 64 bits. Not immediately catastrophic but below recommended thresholds.",
+  "AES-128-CBC":     "Grover's Algorithm: 64-bit effective post-quantum security. The mode (CBC) is also outdated.",
+  "SHA-256":         "Grover's Algorithm: halves effective security from 256 to 128 bits. Still considered safe but SHA-384 provides more headroom.",
+  "SHA-1":           "Already broken classically — collision attacks exist without needing a quantum computer.",
+  "TLS-1.2":         "Protocol limitation: TLS 1.2's architecture cannot negotiate quantum-safe key exchange groups. The server must upgrade to TLS 1.3.",
+  "TLS-1.1":         "Protocol obsolete — deprecated by IETF in 2021. Known weaknesses beyond quantum.",
+  "TLS-1.0":         "Protocol obsolete — deprecated by IETF in 2021. Known weaknesses beyond quantum.",
+};
+
+const ALGO_WHAT_TO_DO = {
+  "X25519":          "Ask your hosting provider or CDN to enable TLS 1.3 with X25519+ML-KEM-768 hybrid key exchange. Cloudflare, Google, and AWS already support this.",
+  "ECDH-P256":       "Enable TLS 1.3 and configure ML-KEM hybrid key exchange groups on the server.",
+  "ECDH-P384":       "Same as P-256 — upgrade to TLS 1.3 with ML-KEM hybrid groups.",
+  "RSA-2048":        "If used for key exchange: migrate to TLS 1.3. If on a certificate: reissue with ECDSA or ML-DSA key.",
+  "ECDSA-P256":      "When certificate authorities begin issuing ML-DSA certificates (in progress), reissue your certificate with an ML-DSA-44 key.",
+  "ECDSA-P384":      "Reissue certificate with ML-DSA-65 when CA support is available.",
+  "RSA-PKCS1-2048":  "Reissue certificate with ML-DSA-65 signature.",
+  "RSA-PKCS1-3072":  "Reissue certificate with ML-DSA-65 signature.",
+  "RSA-PSS-2048":    "Reissue certificate with ML-DSA-65 signature.",
+  "Ed25519":         "Reissue certificate with ML-DSA-44 signature.",
+  "AES-128-GCM":     "Configure server cipher suite preferences to prioritise AES-256-GCM or ChaCha20-Poly1305.",
+  "SHA-256":         "Acceptable for now — move toward SHA-384 when issuing new certificates.",
+  "SHA-1":           "Replace immediately — this is broken regardless of quantum computers.",
+  "TLS-1.2":         "Enable TLS 1.3 on your web server (Apache, Nginx, IIS all support it). Configure ML-KEM key exchange groups.",
+  "TLS-1.1":         "Disable TLS 1.1 immediately. Enable TLS 1.3.",
+  "TLS-1.0":         "Disable TLS 1.0 immediately. Enable TLS 1.3.",
+};
+
+function threatStyle(threat) {
+  const map = {
+    CRITICAL: { color:"#ff3355", bg:"rgba(255,51,85,.1)",  border:"rgba(255,51,85,.25)",  emoji:"🔴", label:"Critical" },
+    HIGH:     { color:"#ff6b35", bg:"rgba(255,107,53,.1)", border:"rgba(255,107,53,.25)", emoji:"🟠", label:"High Risk" },
+    MEDIUM:   { color:"#ffd60a", bg:"rgba(255,214,10,.1)", border:"rgba(255,214,10,.25)", emoji:"🟡", label:"Medium" },
+    LOW:      { color:"#2ecc71", bg:"rgba(46,204,113,.1)", border:"rgba(46,204,113,.25)", emoji:"🟢", label:"Low Risk" },
+    NONE:     { color:"#3b82f6", bg:"rgba(59,130,246,.1)", border:"rgba(59,130,246,.25)", emoji:"🔵", label:"Safe" },
+    UNKNOWN:  { color:"#5a6490", bg:"rgba(90,100,144,.1)", border:"rgba(90,100,144,.25)", emoji:"⚪", label:"Unknown" },
   };
-  const RATING_COLOR = ["#ff2d55","#ff6b35","#ff6b35","#ffd60a","#30d158","#0a84ff"];
-  const RATING_LABEL = ["Broken","Critical","Insecure","Marginal","Acceptable","PQC Safe"];
-  const THREAT_BG    = {
-    CRITICAL:"rgba(255,45,85,.12)",  HIGH:"rgba(255,107,53,.12)",
-    MEDIUM:"rgba(255,214,10,.12)",   LOW:"rgba(48,209,88,.12)",
-    NONE:"rgba(10,132,255,.12)",     UNKNOWN:"rgba(85,96,128,.12)"
-  };
+  return map[threat] || map.UNKNOWN;
+}
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  function setDomain(d) {
-    document.getElementById("domain-input").value = d;
-    document.getElementById("domain-input").focus();
-  }
+function verdictFor(score, hndl, imp) {
+  if (score >= 5 && !hndl && !imp)
+    return { emoji:"✅", color:"#2ecc71", title:"Quantum-Safe",
+      bg:"rgba(46,204,113,.08)", border:"rgba(46,204,113,.2)",
+      plain:"This site uses the latest quantum-safe algorithms. Traffic is protected against both current and future quantum computer attacks." };
+  if (!hndl && score >= 4)
+    return { emoji:"🛡️", color:"#3b82f6", title:"Mostly Protected",
+      bg:"rgba(59,130,246,.08)", border:"rgba(59,130,246,.2)",
+      plain:"The connection itself is quantum-safe — traffic recorded today cannot be decrypted by future quantum computers. However, the certificate still uses classical algorithms that could eventually be forged." };
+  if (hndl)
+    return { emoji:"⚠️", color:"#ff6b35", title:"Harvest Risk — Upgrade Needed",
+      bg:"rgba(255,107,53,.08)", border:"rgba(255,107,53,.2)",
+      plain:"Encrypted traffic from this site could be recorded today and decrypted in the future when quantum computers arrive. The site needs to upgrade its key exchange to quantum-safe algorithms." };
+  if (score <= 1)
+    return { emoji:"🚨", color:"#ff3355", title:"Critical — Highly Vulnerable",
+      bg:"rgba(255,51,85,.08)", border:"rgba(255,51,85,.2)",
+      plain:"This site uses outdated or deprecated encryption. It is extremely vulnerable to both classical and future quantum attacks." };
+  return { emoji:"⚠️", color:"#ffd60a", title:"Partial Protection",
+    bg:"rgba(255,214,10,.08)", border:"rgba(255,214,10,.2)",
+    plain:"Mixed security — some algorithms are acceptable but others need upgrading to be quantum-safe." };
+}
 
-  function setStatus(msg, spin=false) {
-    document.getElementById("status").innerHTML =
-      (spin ? `<span class="spinner"></span>` : "") + msg;
-  }
+function setDomain(d) { document.getElementById("domain-input").value = d; }
+function setStatus(msg, spin=false) {
+  document.getElementById("status").innerHTML = (spin ? `<span class="spinner"></span>` : "") + msg;
+}
 
-  function threatBadge(threat) {
-    const c = THREAT_COLOR[threat] || "#556080";
-    const bg = THREAT_BG[threat]   || "rgba(85,96,128,.12)";
-    return `<span class="threat-badge" style="color:${c};background:${bg};border-color:${c}40">${threat}</span>`;
-  }
+async function scan() {
+  const raw = document.getElementById("domain-input").value.trim();
+  if (!raw) return;
+  let domain = raw.replace(/^https?:\/\//,"").split("/")[0];
+  let port = 443;
+  if (domain.includes(":")) { const p=domain.split(":"); domain=p[0]; port=parseInt(p[1])||443; }
 
-  function ratingBars(rating) {
-    const c = RATING_COLOR[rating];
-    return Array.from({length:6},(_,i) =>
-      `<div class="algo-bar" style="background:${i<=rating?c:'#1a1d2e'}"></div>`
-    ).join("");
-  }
+  document.getElementById("scan-btn").disabled = true;
+  document.getElementById("results").innerHTML = "";
+  setStatus(`Connecting to <strong>${domain}</strong> — this may take up to 30 seconds if the server was sleeping…`, true);
 
-  function scoreColor(s) { return RATING_COLOR[s] || "#556080"; }
-
-  // ── Main scan ──────────────────────────────────────────────────────────────
-  async function scan() {
-    const raw = document.getElementById("domain-input").value.trim();
-    if (!raw) return;
-
-    let domain = raw.replace(/^https?:\/\//,"").split("/")[0];
-    let port = 443;
-    if (domain.includes(":")) {
-      const parts = domain.split(":");
-      domain = parts[0];
-      port   = parseInt(parts[1]) || 443;
-    }
-
-    document.getElementById("scan-btn").disabled = true;
-    document.getElementById("score-section").style.display = "none";
-    document.getElementById("score-section").innerHTML = "";
-    document.getElementById("results").innerHTML = "";
-    setStatus(`Connecting to ${domain}:${port}…`, true);
-
-    try {
-      const url = `${API_BASE}/scan?domain=${encodeURIComponent(domain)}&port=${port}`;
-      const resp = await fetch(url);
-      const data = await resp.json();
-
-      if (data.error) {
-        setStatus("");
-        document.getElementById("results").innerHTML =
-          `<div class="error-box">✕ ${data.error}</div>`;
-        return;
-      }
-
-      setStatus(`Scan complete · ${data.findings.length} algorithms found · ${domain}`);
-      renderResults(data, domain, port);
-
-    } catch(e) {
+  try {
+    const res  = await fetch(`${API_BASE}/scan?domain=${encodeURIComponent(domain)}&port=${port}`);
+    const data = await res.json();
+    if (data.error) {
       setStatus("");
-      document.getElementById("results").innerHTML =
-        `<div class="error-box">✕ Could not reach the scanner API. Is it deployed? (${e.message})</div>`;
-    } finally {
-      document.getElementById("scan-btn").disabled = false;
+      document.getElementById("results").innerHTML = `<div class="error-box">✕ ${data.error}</div>`;
+      return;
     }
+    setStatus(`Scan complete — ${domain}`);
+    render(data, domain, port);
+  } catch(e) {
+    setStatus("");
+    document.getElementById("results").innerHTML =
+      `<div class="error-box">✕ Could not reach the scanner API.<br><br>
+      <strong>If this is your first scan in a while:</strong> the free server sleeps after 15 minutes of inactivity.
+      Visit <a href="${API_BASE}/health" target="_blank" style="color:var(--blue)">${API_BASE}/health</a> in a new tab to wake it up, wait 10 seconds, then try again.<br><br>
+      Error: ${e.message}</div>`;
+  } finally {
+    document.getElementById("scan-btn").disabled = false;
+  }
+}
+
+function render(data, domain, port) {
+  const { findings, portfolio_score, hndl_risk, impersonation_risk, meta } = data;
+  const v = verdictFor(portfolio_score, hndl_risk, impersonation_risk);
+  let html = "";
+
+  // Verdict
+  html += `
+  <div class="verdict-card fade-up" style="background:${v.bg};border-color:${v.border}">
+    <div class="verdict-emoji">${v.emoji}</div>
+    <div>
+      <div class="verdict-title" style="color:${v.color}">${v.title}</div>
+      <div class="verdict-domain">${domain}:${port} · ${meta.tls_version||"?"} · IP: ${meta.ip||"?"}</div>
+      <div class="verdict-plain">${v.plain}</div>
+    </div>
+  </div>`;
+
+  // SECTION 1: Key Exchange
+  const kexFindings = findings.filter(f => f.category==="Key Exchange" || f.category==="Protocol");
+  html += `
+  <div class="section fade-up">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(59,130,246,.15)">🔑</div>
+      <div>
+        <div class="section-title">Part 1 — Session Privacy (Key Exchange)</div>
+        <div class="section-desc">
+          When you open a website, your browser and the server agree on a secret key to encrypt your session.
+          This is the <strong>key exchange</strong>. It determines whether traffic recorded <em>today</em>
+          can be decrypted by future quantum computers — the "Harvest Now, Decrypt Later" threat.
+        </div>
+      </div>
+    </div>
+    ${meta.kex_probe ? `<div class="info-note">ℹ️ <strong>TLS 1.3 not available:</strong> ${meta.kex_probe}</div>` : ""}
+    ${kexFindings.map(f => findingCard(f)).join("")}
+  </div>`;
+
+  // SECTION 2: Certificate
+  const certFindings = findings.filter(f => f.category==="Signature" || f.category==="Hash");
+  html += `
+  <div class="section fade-up">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(20,184,166,.15)">📜</div>
+      <div>
+        <div class="section-title">Part 2 — Identity (Certificate & Signature)</div>
+        <div class="section-desc">
+          A certificate is the website's digital passport — it proves you're talking to the real server, not an impostor.
+          A trusted authority signs this certificate. Breaking the signature would let an attacker
+          <strong>impersonate the website</strong>. Unlike key exchange, this cannot be attacked retroactively — 
+          only when a quantum computer is actively running.
+        </div>
+      </div>
+    </div>
+    ${meta.certificate ? certBlock(meta.certificate) : ""}
+    ${certFindings.map(f => findingCard(f)).join("")}
+  </div>`;
+
+  // SECTION 3: Encryption
+  const symFindings = findings.filter(f => f.category==="Symmetric");
+  if (symFindings.length) {
+    html += `
+    <div class="section fade-up">
+      <div class="section-header">
+        <div class="section-icon" style="background:rgba(46,204,113,.12)">🔒</div>
+        <div>
+          <div class="section-title">Part 3 — Data Encryption (Symmetric Cipher)</div>
+          <div class="section-desc">
+            After the key is agreed, all data is encrypted using a symmetric cipher (like AES).
+            Quantum computers use Grover's algorithm to weaken these — but 256-bit keys have enough headroom to stay safe.
+          </div>
+        </div>
+      </div>
+      ${symFindings.map(f => findingCard(f)).join("")}
+    </div>`;
   }
 
-  function renderResults(data, domain, port) {
-    const { findings, portfolio_score, portfolio_label,
-            hndl_risk, hndl_count, impersonation_risk, impersonation_count, meta } = data;
-
-    // ── Score card ──────────────────────────────────────────────────────────
-    const sc = scoreColor(portfolio_score);
-    const pills = [];
-    if (hndl_risk)
-      pills.push(`<div class="risk-pill" style="color:#ff6b35;border-color:rgba(255,107,53,.4);background:rgba(255,107,53,.08)">⚠ HNDL RISK</div>`);
-    if (impersonation_risk)
-      pills.push(`<div class="risk-pill" style="color:#ffd60a;border-color:rgba(255,214,10,.4);background:rgba(255,214,10,.08)">⚠ IMPERSONATION RISK</div>`);
-    if (!hndl_risk && !impersonation_risk)
-      pills.push(`<div class="risk-pill" style="color:#30d158;border-color:rgba(48,209,88,.4);background:rgba(48,209,88,.08)">✓ LOW QUANTUM RISK</div>`);
-
-    const scoreHtml = `
-    <div class="score-card fade-up">
+  // SECTION 4: Risk + Timeline
+  html += `<hr class="divider">
+  <div class="section fade-up">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(255,107,53,.12)">⏱</div>
       <div>
-        <div class="score-num" style="color:${sc}">${portfolio_score}<span style="color:#1a1d2e;font-size:32px">/5</span></div>
+        <div class="section-title">When does the danger actually kick in?</div>
+        <div class="section-desc">Key exchange and certificate risks have different timelines.</div>
       </div>
-      <div>
-        <div class="score-label" style="color:${sc}">${portfolio_label}</div>
-        <div class="score-sub">${domain}:${port} · ${meta.tls_version || "?"} · ${findings.length} algorithms</div>
-        <div class="score-bars">${ratingBars(portfolio_score)}</div>
-        ${meta.ip ? `<div class="score-sub" style="margin-top:6px">IP: ${meta.ip}${meta.certificate ? ` · Cert: ${meta.certificate.subject} (${meta.certificate.issuer})` : ''}</div>` : ''}
-      </div>
-      <div class="risk-pills">${pills.join("")}</div>
     </div>`;
 
-    document.getElementById("score-section").style.display = "block";
-    document.getElementById("score-section").innerHTML = scoreHtml;
-
-    // ── Meta chips ──────────────────────────────────────────────────────────
-    const chips = [];
-    if (meta.tls_version) chips.push(`<div class="meta-chip highlight">${meta.tls_version}</div>`);
-    if (meta.cipher_suite) chips.push(`<div class="meta-chip">${meta.cipher_suite}</div>`);
-    if (meta.kex_group) chips.push(`<div class="meta-chip good">KEX: ${meta.kex_group}</div>`);
-    if (meta.hsts)      chips.push(`<div class="meta-chip good">HSTS ✓</div>`);
-    else                chips.push(`<div class="meta-chip warn">HSTS ✗</div>`);
-    if (meta.server)    chips.push(`<div class="meta-chip">Server: ${meta.server}</div>`);
-    if (meta.kex_probe) chips.push(`<div class="meta-chip warn">No TLS 1.3 key exchange</div>`);
-    if (meta.cert_warning) chips.push(`<div class="meta-chip warn">Cert verify failed</div>`);
-
-    // ── Group findings by category ──────────────────────────────────────────
-    const groups = {};
-    for (const f of findings) {
-      const cat = f.category || "Unknown";
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(f);
-    }
-
-    const catOrder = ["Protocol","Key Exchange","Symmetric","Hash","Signature","MAC/KDF","Unknown"];
-    let findingsHtml = `<div class="meta-strip">${chips.join("")}</div>`;
-
-    for (const cat of catOrder) {
-      const items = groups[cat];
-      if (!items) continue;
-      findingsHtml += `
-      <div class="findings-group fade-up">
-        <div class="section-head">── ${cat.toUpperCase()}</div>
-        <div class="findings-table">
-          ${items.map(f => {
-            const tc = THREAT_COLOR[f.threat] || "#556080";
-            const migrate = f.migrate && f.migrate !== "Current standard"
-              ? `<div class="ctx-migrate">→ migrate: ${f.migrate}</div>` : "";
-            return `
-            <div class="finding-row">
-              <div>
-                <div class="algo-name" style="color:${tc}">${f.algo}</div>
-                <div class="algo-bars">${ratingBars(f.rating)}</div>
-                <div class="rating-label" style="color:${tc}">${RATING_LABEL[f.rating]}</div>
-                <div class="algo-nist">${f.nist || ""}</div>
-              </div>
-              <div>
-                <div class="ctx-main">${f.context}</div>
-                <div class="ctx-src">${f.source}</div>
-                ${migrate}
-              </div>
-              <div style="text-align:right">
-                ${threatBadge(f.threat)}
-                <div class="quantum-text">${f.quantum || ""}</div>
-              </div>
-            </div>`;
-          }).join("")}
-        </div>
-      </div>`;
-    }
-
-    // ── Risk explanations ───────────────────────────────────────────────────
-    let riskHtml = `<div class="section-head" style="margin-top:8px">── RISK ASSESSMENT</div>`;
-    if (hndl_risk) {
-      riskHtml += `
-      <div class="risk-box hndl fade-up">
-        <div class="risk-title">⚠ HARVEST-NOW-DECRYPT-LATER (HNDL) RISK — ${hndl_count} key exchange algorithm(s)</div>
-        Adversaries can record encrypted TLS sessions <em>today</em> and decrypt them retroactively once a
-        cryptographically-relevant quantum computer (CRQC) becomes available (~2030 estimate).
-        Past traffic <strong>cannot be protected retroactively</strong> — migration must happen before CRQCs arrive.
-        Priority: upgrade key exchange to <strong>X25519+ML-KEM-768</strong> via TLS 1.3.
-      </div>`;
-    }
-    if (impersonation_risk) {
-      riskHtml += `
-      <div class="risk-box imp fade-up">
-        <div class="risk-title">⚠ FUTURE IMPERSONATION RISK (not HNDL) — ${impersonation_count} certificate signature(s)</div>
-        Breaking certificate signatures requires an active CRQC <em>at the time of the attack</em> — it
-        cannot retroactively expose past sessions. Migrate before CRQCs arrive to prevent future
-        man-in-the-middle attacks. Target: <strong>ML-DSA-65 (FIPS 204)</strong>.
-      </div>`;
-    }
-    if (!hndl_risk && !impersonation_risk) {
-      riskHtml += `
-      <div class="risk-box safe fade-up">
-        <div class="risk-title">✓ LOW QUANTUM RISK</div>
-        No high-priority quantum vulnerabilities detected in key exchange or certificate signatures.
-        Continue monitoring NIST PQC standards for emerging guidance.
-      </div>`;
-    }
-
-    document.getElementById("results").innerHTML = findingsHtml + riskHtml;
+  if (hndl_risk) {
+    html += `
+    <div class="action-card" style="border-color:rgba(255,107,53,.3);background:rgba(255,107,53,.06)">
+      <div class="action-title" style="color:#ff6b35">🔴 Harvest Now, Decrypt Later — The Clock is Already Running</div>
+      <div class="action-body">
+        Because this site uses classical key exchange, adversaries can <strong>record your encrypted session right now</strong>
+        and store it indefinitely. When a sufficiently powerful quantum computer arrives, they decrypt it.
+        <br><br>
+        <strong>Who estimates what timeline?</strong><br>
+        • <strong>NSA / CISA (US)</strong>: plan for Q-Day between 2030–2035. Already mandating quantum migration for US federal agencies.<br>
+        • <strong>NIST (US standards body)</strong>: finalised PQC standards in 2024 (FIPS 203/204/205) citing urgency.<br>
+        • <strong>GCHQ / NCSC (UK)</strong>: recommends migration complete by 2035.<br>
+        • <strong>IBM / Google</strong>: predict 1 million qubit machines within this decade.<br>
+        <br>
+        <strong>Who is most at risk?</strong> Data with a long secrecy horizon — medical records, financial data,
+        government communications, legal documents, anything that needs to stay private for 10+ years.
+        <br><br>
+        <strong>What the site owner should do:</strong> Enable TLS 1.3 with X25519+ML-KEM-768 hybrid key exchange.
+        Major CDNs like Cloudflare, Fastly, and AWS CloudFront already support this.
+      </div>
+      <div class="timeline">
+        <div class="tl-safe" style="width:0%"></div>
+        <div class="tl-danger" style="background:#ff6b35"></div>
+      </div>
+      <div class="tl-labels"><span>2020 (harvest begins)</span><span>▲ NOW (2026)</span><span>2030–35 (CRQC)</span></div>
+      <div class="tl-note">🔴 Harvest risk is active today — traffic being recorded now could be decrypted when CRQCs arrive</div>
+    </div>`;
   }
 
-  // Enter key
-  document.getElementById("domain-input").addEventListener("keydown", e => {
-    if (e.key === "Enter") scan();
-  });
+  if (impersonation_risk) {
+    html += `
+    <div class="action-card" style="border-color:rgba(255,214,10,.3);background:rgba(255,214,10,.05)">
+      <div class="action-title" style="color:#ffd60a">🟡 Certificate Forgery — A Future Risk, Not Immediate</div>
+      <div class="action-body">
+        The certificate uses a classical signature algorithm. A quantum computer could eventually break the signature
+        — but only with an <strong>active CRQC at the time of the attack</strong>.
+        Past sessions are <strong>not exposed by this</strong>. This is why key exchange is the more urgent problem.
+        <br><br>
+        <strong>What the timeline looks like:</strong><br>
+        • Safe now — no quantum computer exists yet<br>
+        • Risk begins when CRQCs are deployed, estimated <strong>2029–2035</strong><br>
+        • Certificate authorities (CAs) are currently building ML-DSA support — the ecosystem will transition industry-wide<br>
+        <br>
+        <strong>What site owners should do:</strong> When CAs begin issuing ML-DSA certificates (expected 2025–2027),
+        reissue the site's certificate. This requires CA ecosystem readiness — not just the site owner.
+      </div>
+      <div class="timeline">
+        <div class="tl-safe" style="width:30%"></div>
+        <div class="tl-danger" style="background:#ffd60a"></div>
+      </div>
+      <div class="tl-labels"><span>2020</span><span>▲ NOW (2026)</span><span>2030–35 (CRQC)</span></div>
+      <div class="tl-note">🟡 Safe today — risk activates when a CRQC is actively deployed</div>
+    </div>`;
+  }
+
+  if (!hndl_risk && !impersonation_risk) {
+    html += `
+    <div class="action-card" style="border-color:rgba(46,204,113,.3);background:rgba(46,204,113,.06)">
+      <div class="action-title" style="color:#2ecc71">✅ No High-Priority Quantum Vulnerabilities Found</div>
+      <div class="action-body">
+        This site is using modern quantum-resistant algorithms for key exchange and has no immediately
+        critical signature vulnerabilities. Continue monitoring as NIST standards and CA infrastructure evolve.
+      </div>
+    </div>`;
+  }
+
+  html += `</div>`;
+
+  // HSTS / headers
+  if (meta.hsts !== undefined) {
+    html += `
+    <div class="section fade-up">
+      <div class="section-header">
+        <div class="section-icon" style="background:rgba(90,100,144,.15)">🌐</div>
+        <div><div class="section-title">Other Security Signals</div></div>
+      </div>
+      <div class="cert-meta">
+        <div class="cert-row">
+          <span class="cert-key">HSTS</span>
+          <span class="cert-val" style="color:${meta.hsts?'#2ecc71':'#ff6b35'}">
+            ${meta.hsts ? "✓ Enabled — browsers forced to always use HTTPS" : "✗ Not set — browsers may connect over unencrypted HTTP"}
+          </span>
+        </div>
+        ${meta.server ? `<div class="cert-row"><span class="cert-key">Server</span><span class="cert-val">${meta.server}</span></div>` : ""}
+        ${meta.alpn   ? `<div class="cert-row"><span class="cert-key">Protocol</span><span class="cert-val">${meta.alpn}</span></div>` : ""}
+      </div>
+    </div>`;
+  }
+
+  document.getElementById("results").innerHTML = html;
+}
+
+function findingCard(f) {
+  const s   = threatStyle(f.threat);
+  const id  = "d" + Math.random().toString(36).slice(2,9);
+  const plain    = ALGO_PLAIN[f.algo]        || f.context || "";
+  const howQ     = ALGO_HOW_QUANTUM[f.algo]  || "";
+  const whatToDo = ALGO_WHAT_TO_DO[f.algo]   || f.migrate || "";
+  const hasDetails = howQ || whatToDo;
+
+  return `
+  <div class="finding-card">
+    <div class="finding-top">
+      <div>
+        <div class="finding-algo" style="color:${s.color}">${f.algo}</div>
+        <div class="finding-plain">${plain}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="status-pill" style="color:${s.color};background:${s.bg};border-color:${s.border}">${s.emoji} ${s.label}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:6px">${f.nist||""}</div>
+      </div>
+    </div>
+    ${hasDetails ? `
+    <button class="detail-toggle" onclick="toggleDetail('${id}',this)">
+      <span class="arr">▶</span> How does the quantum attack work? What should be done?
+    </button>
+    <div class="finding-details" id="${id}">
+      <div class="detail-grid">
+        ${howQ     ? `<div class="detail-label">Quantum attack</div><div class="detail-value">${howQ}</div>` : ""}
+        ${whatToDo ? `<div class="detail-label">What to do</div><div class="detail-value ${f.threat==='NONE'||f.threat==='LOW'?'good':'warn'}">${whatToDo}</div>` : ""}
+        <div class="detail-label">Attack type</div>
+        <div class="detail-value">${f.quantum||"N/A"}</div>
+        <div class="detail-label">NIST status</div>
+        <div class="detail-value code">${f.nist||"N/A"}</div>
+      </div>
+    </div>` : ""}
+  </div>`;
+}
+
+function certBlock(c) {
+  const exp = new Date(c.not_after);
+  const days = Math.round((exp - new Date()) / 86400000);
+  const col = days < 30 ? "#ff3355" : days < 90 ? "#ffd60a" : "#2ecc71";
+  return `
+  <div class="cert-meta">
+    <div class="cert-row"><span class="cert-key">Website</span><span class="cert-val">${c.subject}</span></div>
+    <div class="cert-row"><span class="cert-key">Issued by</span><span class="cert-val">${c.issuer}</span></div>
+    <div class="cert-row"><span class="cert-key">Expires</span><span class="cert-val" style="color:${col}">${c.not_after} — ${days} days left</span></div>
+  </div>`;
+}
+
+function toggleDetail(id, btn) {
+  const el = document.getElementById(id);
+  el.classList.toggle("open");
+  btn.querySelector(".arr").textContent = el.classList.contains("open") ? "▼" : "▶";
+}
+
+document.getElementById("domain-input").addEventListener("keydown", e => { if (e.key==="Enter") scan(); });
 </script>
 </body>
 </html>
