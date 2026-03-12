@@ -475,49 +475,31 @@
       .tl-labels { font-size: 9px; }
     }
 
+    
+
+
     /* ── TOOLTIPS ──────────────────────────────────────────── */
     .jargon {
       border-bottom: 1px dashed var(--muted);
       cursor: help;
-      position: relative;
-      white-space: nowrap;
     }
-    #tooltip-bubble {
+    #tip {
       position: fixed;
-      z-index: 9999;
+      z-index: 99999;
       max-width: 260px;
-      background: var(--ink);
-      color: var(--paper);
+      background: #1a1714;
+      color: #f0e8d8;
       font-family: 'Source Serif 4', serif;
       font-size: 12.5px;
       font-weight: 300;
       line-height: 1.65;
       padding: 10px 14px;
       border-radius: 3px;
-      box-shadow: 3px 4px 0 rgba(0,0,0,.25);
+      box-shadow: 3px 4px 0 rgba(0,0,0,.3);
       pointer-events: none;
-      opacity: 0;
-      transition: opacity .15s ease;
+      display: none;
     }
-    #tooltip-bubble.visible { opacity: 1; }
-    #tooltip-bubble strong { font-weight: 600; color: #e8d9c0; }
-    #tooltip-bubble::after {
-      content: '';
-      position: absolute;
-      bottom: -6px; left: 18px;
-      border: 6px solid transparent;
-      border-bottom: none;
-      border-top-color: var(--ink);
-    }
-    #tooltip-bubble.flip-up::after { display: none; }
-    #tooltip-bubble.flip-up::before {
-      content: '';
-      position: absolute;
-      top: -6px; left: 18px;
-      border: 6px solid transparent;
-      border-top: none;
-      border-bottom-color: var(--ink);
-    }
+    #tip strong { font-weight: 600; color: #e8d9c0; }
 
   </style>
 </head>
@@ -891,7 +873,7 @@ function render(data, domain, port) {
     <div class="verdict-grade" style="color:${v.color}">${v.grade}</div>
     <div>
       <div class="verdict-phrase" style="color:${v.color}">${v.phrase}</div>
-      <div class="verdict-domain">${domain}:${port} · <span class="jargon" data-tip="${meta.tls_version||'TLS 1.2'}">${meta.tls_version||"?"}</span> · IP: ${meta.ip||"?"}</div>
+      <div class="verdict-domain">${domain}:${port} · <span class="jargon" data-tip-tls="1">${meta.tls_version||"?"}</span> · IP: ${meta.ip||"?"}</div>
       <div class="verdict-plain">${v.plain}</div>
     </div>
   </div>`;
@@ -1364,105 +1346,89 @@ function toggleDetail(id, btn) {
 document.getElementById("domain-input").addEventListener("keydown", e => { if (e.key==="Enter") scan(); });
 </script>
 
-<div id="tooltip-bubble"></div>
+
+
+
+<div id="tip"></div>
 <script>
 const TIPS = {
-  // Status values
-  "Legacy Only":    "<strong>Legacy Only</strong> — Still works, but officially past its recommended lifespan. Think of it like a car that passes inspection but shouldn't be on the road much longer.",
-  "Conditional":    "<strong>Conditional</strong> — Acceptable only under strict conditions, like using TLS 1.2 with specific cipher settings. A stepping stone, not a destination.",
-  "Deprecated":     "<strong>Deprecated</strong> — Officially retired by standards bodies. Servers should no longer offer or accept this.",
-  "Withdrawn":      "<strong>Withdrawn</strong> — Banned. Known to be broken or dangerously weak. No legitimate server should use this.",
-  "Pre-FIPS draft": "<strong>Pre-FIPS draft</strong> — An early version of what later became a final standard. Quantum-resistant in practice, but not the approved form.",
-  "Approved":       "<strong>Approved</strong> — Meets current government standards. Not yet quantum-safe at this key size, but acceptable for now.",
+  "Legacy Only":     "<strong>Legacy Only</strong> — Still works, but past its recommended lifespan. Like a car that passes inspection but shouldn't be on the road much longer.",
+  "Conditional":     "<strong>Conditional</strong> — Safe only under strict server configuration. A stepping stone, not a destination.",
+  "Deprecated":      "<strong>Deprecated</strong> — Officially retired. Servers should no longer offer or accept this.",
+  "Withdrawn":       "<strong>Withdrawn</strong> — Banned. Known to be broken or dangerously weak.",
+  "Pre-FIPS draft":  "<strong>Pre-FIPS draft</strong> — An earlier version of what became a final standard. Quantum-resistant in practice, but not the approved form.",
+  "Approved":        "<strong>Approved</strong> — Meets current government standards, but not yet quantum-safe at this key size.",
+  "FIPS 203 (2024)": "<strong>FIPS 203</strong> — The US government standard for quantum-safe key exchange, finalised in 2024. The gold standard right now.",
+  "FIPS 204 (2024)": "<strong>FIPS 204</strong> — The US government standard for quantum-safe digital signatures, finalised in 2024.",
+  "FIPS 205 (2024)": "<strong>FIPS 205</strong> — The US government standard for hash-based quantum-safe signatures, finalised in 2024.",
+  "FIPS 206 (2024)": "<strong>FIPS 206</strong> — The US government standard for lattice-based quantum-safe signatures (Falcon), finalised in 2024.",
+  "IETF Draft":      "<strong>IETF Draft</strong> — A proposed internet standard under review. Widely deployed in practice (Google, Cloudflare use it), but not yet final.",
+  "RFC 8439":        "<strong>RFC 8439</strong> — A finalised internet standard for ChaCha20-Poly1305 encryption. Fully current.",
+  "FIPS 197":        "<strong>FIPS 197</strong> — The long-standing US government standard for AES encryption. Fully current.",
 
-  // Attack types
-  "Shor's":         "<strong>Shor's algorithm</strong> — A quantum algorithm that can efficiently solve the maths that RSA and elliptic curve encryption are built on. A large enough quantum computer running Shor's could break these in hours.",
-  "Grover's":       "<strong>Grover's algorithm</strong> — A quantum algorithm that speeds up brute-force attacks. It effectively halves the security of symmetric keys — so a 128-bit key behaves like a 64-bit key. A 256-bit key still has enough headroom.",
-  "Resistant":      "<strong>Quantum-resistant</strong> — Built on maths problems that quantum computers cannot efficiently solve, even with Shor's or Grover's algorithms.",
-  "Classical KEX":  "<strong>Classical key exchange</strong> — The key exchange part uses pre-quantum algorithms. TLS 1.3 itself is a good protocol, but the key exchange inside it may still need upgrading.",
-  "Depends":        "<strong>Depends on configuration</strong> — TLS 1.2 can be safe or unsafe depending on the cipher suites and settings the server uses. The details matter.",
-  "N/A":            "<strong>N/A</strong> — Not applicable. This protocol is broken for reasons unrelated to quantum computers.",
+  "Shor’s":     "<strong>Shor’s algorithm</strong> — A quantum algorithm that efficiently breaks RSA and elliptic curve encryption by solving the underlying maths. A large quantum computer running this could crack today’s certificates and key exchanges.",
+  "Grover’s":   "<strong>Grover’s algorithm</strong> — A quantum algorithm that halves the effective security of symmetric keys. A 128-bit key would behave like a 64-bit key. A 256-bit key still has enough headroom.",
+  "Resistant":       "<strong>Quantum-resistant</strong> — Built on maths that quantum computers cannot efficiently solve.",
+  "Classical KEX":   "<strong>Classical key exchange</strong> — The key exchange uses pre-quantum algorithms. TLS 1.3 itself is good, but the key exchange inside may still need upgrading.",
+  "Depends":         "<strong>Depends on configuration</strong> — TLS 1.2 can be safe or unsafe depending on how the server is set up.",
+  "N/A":             "<strong>N/A</strong> — Not applicable. This protocol is broken for non-quantum reasons.",
 
-  // Field labels
-  "NIST status":    "<strong>NIST</strong> is the US National Institute of Standards and Technology — the body that approves cryptographic standards worldwide. Their status labels indicate whether an algorithm is current, outdated, or banned.",
-  "Attack type":    "<strong>Attack type</strong> — Which quantum algorithm could threaten this. Shor's breaks public-key crypto; Grover's weakens symmetric crypto.",
-  "Quantum attack": "<strong>Quantum attack</strong> — How a future quantum computer would attack this algorithm specifically.",
+  "NIST status":     "<strong>NIST</strong> is the US National Institute of Standards and Technology — the body that approves cryptographic standards worldwide. Their labels tell you if an algorithm is current, aging, or banned.",
+  "Attack type":     "<strong>Attack type</strong> — Which quantum algorithm is a threat here. Shor’s breaks public-key crypto; Grover’s weakens symmetric crypto.",
 
-  // Protocol labels
-  "TLS 1.2":        "<strong>TLS 1.2</strong> (Transport Layer Security) — The security protocol that encrypts web traffic. Version 1.2 is still widely used but has known weaknesses depending on how it's configured.",
-  "TLS 1.3":        "<strong>TLS 1.3</strong> — The current recommended version of the web encryption protocol. Faster and more secure than 1.2, with fewer configuration pitfalls.",
-  "TLS 1.0":        "<strong>TLS 1.0</strong> — Officially retired in 2021. Should not be offered by any server.",
-  "TLS 1.1":        "<strong>TLS 1.1</strong> — Officially retired in 2021. Should not be offered by any server.",
-  "TLS handshake":  "<strong>TLS handshake</strong> — The brief negotiation that happens before any data is sent. Your browser and the server agree on which algorithms to use and exchange encryption keys.",
+  "TLS 1.3":         "<strong>TLS 1.3</strong> (Transport Layer Security) — The current recommended version of the web encryption protocol. Faster and more secure than 1.2.",
+  "TLS 1.2":         "<strong>TLS 1.2</strong> — Still widely used but has weaknesses depending on configuration. Most sites are here today.",
+  "TLSv1.3":         "<strong>TLS 1.3</strong> — The current recommended version of the web encryption protocol. Faster and more secure than 1.2.",
+  "TLSv1.2":         "<strong>TLS 1.2</strong> — Still widely used but has weaknesses depending on configuration.",
+  "TLS 1.0":         "<strong>TLS 1.0</strong> — Officially retired in 2021. Should not be offered by any server.",
+  "TLS 1.1":         "<strong>TLS 1.1</strong> — Officially retired in 2021. Should not be offered by any server.",
+  "TLS handshake":   "<strong>TLS handshake</strong> — The brief negotiation before any data is sent. Your browser and the server agree which algorithms to use and exchange encryption keys.",
 
-  // Cert chain
-  "Leaf certificate":     "<strong>Leaf certificate</strong> — The certificate belonging to this specific website. It's what your browser checks to confirm you're on the right site.",
-  "Intermediate CA":      "<strong>Intermediate CA</strong> — A middleman certificate authority that sits between the root and the website certificate. It vouches for the leaf certificate.",
-  "Root CA":              "<strong>Root CA</strong> (Certificate Authority) — A highly trusted organisation whose certificate is pre-installed in your browser or operating system. Ultimately vouches for the whole chain.",
+  "Leaf certificate":  "<strong>Leaf certificate</strong> — This website’s own certificate. Your browser checks it to confirm you’re talking to the right server.",
+  "Intermediate CA":   "<strong>Intermediate CA</strong> — A middleman certificate authority that vouches for the website’s certificate.",
+  "Root CA":           "<strong>Root CA</strong> (Certificate Authority) — A highly trusted organisation whose certificate is pre-installed in your browser or OS. It ultimately vouches for the whole chain.",
 
-  // Algorithm names
-  "ECDSA":          "<strong>ECDSA</strong> (Elliptic Curve Digital Signature Algorithm) — The most common way websites sign their certificates today. Uses elliptic curve maths, which Shor's algorithm can break.",
-  "RSA":            "<strong>RSA</strong> — The classic public-key algorithm, named after its inventors. Relies on the difficulty of factoring large numbers — which quantum computers can do efficiently.",
-  "ML-KEM":         "<strong>ML-KEM</strong> (Module Lattice Key Encapsulation Mechanism) — The new NIST-approved quantum-safe key exchange standard (FIPS 203). Built on lattice maths, which quantum computers cannot efficiently solve.",
-  "ML-DSA":         "<strong>ML-DSA</strong> (Module Lattice Digital Signature Algorithm) — The new NIST-approved quantum-safe signature standard (FIPS 204). Replaces ECDSA and RSA signatures.",
-  "X25519":         "<strong>X25519</strong> — A modern elliptic curve key exchange algorithm. Fast and widely used, but still vulnerable to Shor's algorithm on a quantum computer.",
-  "HSTS":           "<strong>HSTS</strong> (HTTP Strict Transport Security) — A browser instruction that says: always use HTTPS for this site, never plain HTTP. Prevents certain downgrade attacks.",
-  "HNDL":           "<strong>Harvest Now, Decrypt Later</strong> — An attack where someone records your encrypted traffic today, stores it, and waits until quantum computers are powerful enough to decrypt it.",
+  "ECDSA":  "<strong>ECDSA</strong> — The most common way websites sign certificates today. Uses elliptic curve maths, which Shor’s algorithm can break on a quantum computer.",
+  "RSA":    "<strong>RSA</strong> — The classic public-key algorithm. Relies on factoring large numbers — which quantum computers can do efficiently.",
+  "ML-KEM": "<strong>ML-KEM</strong> (Module Lattice Key Encapsulation) — The new NIST-approved quantum-safe key exchange standard (FIPS 203). Built on lattice maths that quantum computers cannot solve.",
+  "ML-DSA": "<strong>ML-DSA</strong> (Module Lattice Digital Signature) — The new NIST-approved quantum-safe signature standard (FIPS 204). Replaces ECDSA and RSA signatures.",
+  "X25519": "<strong>X25519</strong> — A fast, modern elliptic curve key exchange. Widely used, but still vulnerable to Shor’s algorithm.",
+  "HSTS":   "<strong>HSTS</strong> (HTTP Strict Transport Security) — Tells browsers to always use HTTPS, never plain HTTP. Prevents certain downgrade attacks.",
+  "HNDL":   "<strong>Harvest Now, Decrypt Later</strong> — An attack where someone records your encrypted traffic today and waits until quantum computers can decrypt it.",
 };
 
-const bubble = document.getElementById('tooltip-bubble');
-let hideTimer;
+const tip = document.getElementById('tip');
 
 function showTip(el) {
-  const key = el.dataset.tip;
-  const text = TIPS[key];
+  const key = el.dataset.tip || (el.dataset.tipTls ? el.textContent.trim() : null);
+  if (!key) return;
+  const text = TIPS[key] || TIPS[key.replace('v','').replace('1_','1.')] || null;
   if (!text) return;
-  clearTimeout(hideTimer);
-  bubble.innerHTML = text;
-
+  tip.innerHTML = text;
+  tip.style.display = 'block';
   const r = el.getBoundingClientRect();
-  const bw = 264;
   let left = r.left;
   let top  = r.bottom + 10;
-
-  // flip if near right edge
-  if (left + bw > window.innerWidth - 12) left = window.innerWidth - bw - 12;
+  if (left + 268 > window.innerWidth - 8) left = window.innerWidth - 276;
   if (left < 8) left = 8;
-  // flip up if near bottom
-  const flipUp = (r.bottom + 170 > window.innerHeight);
-  if (flipUp) {
-    bubble.style.visibility = 'hidden';
-    bubble.classList.add('visible');
-    const bh = bubble.offsetHeight;
-    bubble.classList.remove('visible');
-    bubble.style.visibility = '';
-    top = r.top - bh - 10;
-    bubble.classList.add('flip-up');
-  } else {
-    bubble.classList.remove('flip-up');
-  }
-
-  bubble.style.left = left + 'px';
-  bubble.style.top  = top  + 'px';
-  bubble.classList.add('visible');
+  if (r.bottom + 180 > window.innerHeight) top = r.top - tip.offsetHeight - 10;
+  tip.style.left = left + 'px';
+  tip.style.top  = top  + 'px';
 }
 
-function hideTip() {
-  hideTimer = setTimeout(() => bubble.classList.remove('visible'), 120);
-}
+function hideTip() { tip.style.display = 'none'; }
 
 document.addEventListener('mouseover', e => {
   const el = e.target.closest('.jargon');
-  if (el) showTip(el);
+  if (el) showTip(el); else hideTip();
 });
-document.addEventListener('mouseout', e => {
-  if (e.target.closest('.jargon')) hideTip();
-});
-// touch support
 document.addEventListener('click', e => {
   const el = e.target.closest('.jargon');
-  if (el) { showTip(el); setTimeout(hideTip, 3000); }
+  if (el) { showTip(el); e.stopPropagation(); }
 });
+document.addEventListener('click', e => {
+  if (!e.target.closest('.jargon')) hideTip();
+}, true);
 </script>
 
 </body>
