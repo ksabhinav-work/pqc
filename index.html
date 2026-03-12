@@ -400,9 +400,12 @@
       header { padding: 20px 16px 20px; }
       main   { padding: 20px 16px 60px; }
 
-      /* header: SVG left of headline, fills text height */
-      header > div { gap: 14px; align-items: stretch; }
-      header svg   { width: auto !important; height: 100% !important; min-width: 80px; }
+      /* header layout on mobile */
+      header > div { gap: 12px; align-items: flex-start; }
+      header > div > div:first-child { width: 85px !important; flex-shrink: 0; align-self: stretch; }
+      header > div > div:first-child svg { width: 100% !important; height: 100% !important; display: block; }
+      header > div > div:last-child { flex: 1; min-width: 0; }
+      h1 { font-size: 21px; line-height: 1.2; }
 
       h1 { font-size: 22px; }
       .header-sub { font-size: 13px; margin-top: 8px; }
