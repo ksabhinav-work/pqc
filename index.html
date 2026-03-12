@@ -65,6 +65,7 @@
 
     /* ── MAIN ──────────────────────────────────────────────── */
     main { max-width: 860px; margin: 0 auto; padding: 28px 24px 80px; }
+    .section { position: relative; }
 
     /* ── SCAN BOX ──────────────────────────────────────────── */
     /* ── KEYBOARD VARIABLES ───────────────────────────────── */
@@ -253,6 +254,26 @@
     }
     .section-desc strong { color: var(--ink2); font-weight: 600; }
     .section-desc em { font-style: italic; }
+    /* ── MARGIN NUMERALS ───────────────────────────────────── */
+    .margin-anchor {
+      position: absolute;
+      left: -130px; top: 0;
+      width: 110px;
+      display: flex; flex-direction: column; align-items: center;
+      gap: 10px;
+    }
+    .margin-roman {
+      font-family: 'Playfair Display', serif;
+      font-size: 52px; font-weight: 400; font-style: italic;
+      color: var(--rule2); line-height: 1;
+      border-bottom: 1px solid var(--rule);
+      padding-bottom: 8px; width: 100%; text-align: center;
+    }
+    .margin-illo { opacity: .7; }
+    /* hide old inline numeral when margin is shown */
+    .section-numeral-inline { display: none; }
+
+
 
     /* ── FINDING CARDS ─────────────────────────────────────── */
     .finding-card {
@@ -433,7 +454,9 @@
       .verdict-grade { font-size: 36px; min-width: 48px; }
       .verdict-title { font-size: 17px; }
 
-      .section-header { gap: 10px; }
+      .margin-anchor { display: none; }
+      .section-numeral-inline { display: block; }
+            .section-header { gap: 10px; }
       .section-numeral { font-size: 22px; width: 22px; }
       .section-title { font-size: 14px; }
       .section-desc { font-size: 12px; }
@@ -832,8 +855,41 @@ function render(data, domain, port) {
   const kexFindings = findings.filter(f => f.category==="Key Exchange" || f.category==="Protocol");
   html += `
   <div class="section fade-up">
+    <div class="margin-anchor">
+      <div class="margin-roman">I</div>
+      <svg class="margin-illo" width="90" height="90" viewBox="0 0 90 90" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- hacker figure harvesting data packets -->
+  <!-- hat -->
+  <ellipse cx="45" cy="22" rx="16" ry="4" fill="#1a1714"/>
+  <rect x="33" y="12" width="24" height="12" rx="4" fill="#1a1714"/>
+  <!-- head -->
+  <circle cx="45" cy="30" r="8" fill="#c8bfaa"/>
+  <!-- eyes - mask -->
+  <rect x="37" y="27" width="16" height="5" rx="2.5" fill="#1a1714"/>
+  <circle cx="40" cy="29" r="2" fill="#f5f0e8"/>
+  <circle cx="50" cy="29" r="2" fill="#f5f0e8"/>
+  <!-- body -->
+  <rect x="36" y="38" width="18" height="20" rx="3" fill="#3d3530"/>
+  <!-- arms reaching out with bucket -->
+  <line x1="36" y1="44" x2="22" y2="52" stroke="#3d3530" stroke-width="4" stroke-linecap="round"/>
+  <line x1="54" y1="44" x2="68" y2="52" stroke="#3d3530" stroke-width="4" stroke-linecap="round"/>
+  <!-- bucket on left -->
+  <path d="M14 52 L18 66 H26 L30 52 Z" fill="#c8bfaa" stroke="#1a1714" stroke-width="1.5"/>
+  <line x1="14" y1="52" x2="30" y2="52" stroke="#1a1714" stroke-width="1.5"/>
+  <!-- data packets falling into bucket -->
+  <rect x="17" y="42" width="7" height="5" rx="1" fill="#9a3412" transform="rotate(-10 20 44)"/>
+  <rect x="22" y="35" width="6" height="4" rx="1" fill="#9a3412" transform="rotate(5 25 37)"/>
+  <rect x="27" y="44" width="5" height="5" rx="1" fill="#9a3412" transform="rotate(-5 29 46)"/>
+  <!-- legs -->
+  <rect x="38" y="57" width="6" height="14" rx="2" fill="#3d3530"/>
+  <rect x="46" y="57" width="6" height="14" rx="2" fill="#3d3530"/>
+  <!-- small lock icons floating -->
+  <text x="58" y="40" font-size="10" fill="#c8bfaa">🔒</text>
+  <text x="62" y="28" font-size="8" fill="#c8bfaa">⚡</text>
+</svg>
+    </div>
     <div class="section-header">
-      <div class="section-numeral">I</div>
+      <div class="section-numeral section-numeral-inline">I</div>
       <div>
         <div class="section-title">Session Privacy — Key Exchange</div>
         <div class="section-desc">
@@ -851,8 +907,48 @@ function render(data, domain, port) {
   const certFindings = findings.filter(f => f.category==="Signature" || f.category==="Hash");
   html += `
   <div class="section fade-up">
+    <div class="margin-anchor">
+      <div class="margin-roman">II</div>
+      <svg class="margin-illo" width="90" height="90" viewBox="0 0 90 90" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- left figure: user -->
+  <circle cx="12" cy="22" r="7" fill="#c8bfaa"/>
+  <rect x="6" y="30" width="12" height="16" rx="2" fill="#5a7a5a"/>
+  <line x1="6" y1="36" x2="0" y2="44" stroke="#5a7a5a" stroke-width="3" stroke-linecap="round"/>
+  <line x1="18" y1="36" x2="24" y2="44" stroke="#5a7a5a" stroke-width="3" stroke-linecap="round"/>
+  <rect x="7" y="46" width="4" height="12" rx="1.5" fill="#5a7a5a"/>
+  <rect x="13" y="46" width="4" height="12" rx="1.5" fill="#5a7a5a"/>
+
+  <!-- right figure: server/website -->
+  <rect x="72" y="14" width="16" height="22" rx="2" fill="#c8bfaa" stroke="#1a1714" stroke-width="1.5"/>
+  <rect x="75" y="17" width="10" height="8" rx="1" fill="#1a1714" opacity=".2"/>
+  <circle cx="80" cy="30" r="2" fill="#5a7a5a"/>
+  <rect x="74" y="36" width="12" height="4" rx="1" fill="#1a1714" opacity=".15"/>
+
+  <!-- hacker in middle - intercepting -->
+  <ellipse cx="45" cy="17" rx="12" ry="3" fill="#1a1714"/>
+  <rect x="37" y="10" width="16" height="10" rx="3" fill="#1a1714"/>
+  <circle cx="45" cy="26" r="7" fill="#c8bfaa"/>
+  <rect x="38" y="23" width="14" height="4" rx="2" fill="#1a1714"/>
+  <circle cx="41" cy="25" r="1.5" fill="#f5f0e8"/>
+  <circle cx="49" cy="25" r="1.5" fill="#f5f0e8"/>
+  <rect x="38" y="33" width="14" height="16" rx="2" fill="#3d3530"/>
+  <rect x="39" y="49" width="4" height="11" rx="1.5" fill="#3d3530"/>
+  <rect x="45" y="49" width="4" height="11" rx="1.5" fill="#3d3530"/>
+  <!-- hands intercepting the signal line -->
+  <line x1="38" y1="39" x2="28" y2="45" stroke="#3d3530" stroke-width="3.5" stroke-linecap="round"/>
+  <line x1="52" y1="39" x2="62" y2="45" stroke="#3d3530" stroke-width="3.5" stroke-linecap="round"/>
+
+  <!-- connection lines being intercepted -->
+  <line x1="24" y1="30" x2="36" y2="30" stroke="#c8bfaa" stroke-width="1.5" stroke-dasharray="3 2"/>
+  <line x1="54" y1="30" x2="70" y2="25" stroke="#c8bfaa" stroke-width="1.5" stroke-dasharray="3 2"/>
+
+  <!-- fake cert badge -->
+  <rect x="56" y="55" width="20" height="14" rx="2" fill="#fffbeb" stroke="#fdba74" stroke-width="1.5"/>
+  <text x="61" y="65" font-size="8" fill="#92400e">FAKE</text>
+</svg>
+    </div>
     <div class="section-header">
-      <div class="section-numeral">II</div>
+      <div class="section-numeral section-numeral-inline">II</div>
       <div>
         <div class="section-title">Identity — Certificate & Signature</div>
         <div class="section-desc">
@@ -872,8 +968,50 @@ function render(data, domain, port) {
   if (symFindings.length) {
     html += `
     <div class="section fade-up">
+      <div class="margin-anchor">
+        <div class="margin-roman">III</div>
+        <svg class="margin-illo" width="90" height="82" viewBox="0 0 90 82" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- large AES block cipher concept: grid of cells being encrypted -->
+  <!-- plain text grid -->
+  <rect x="8" y="10" width="28" height="28" rx="2" fill="#c8bfaa" stroke="#1a1714" stroke-width="1"/>
+  <line x1="8" y1="19" x2="36" y2="19" stroke="#1a1714" stroke-width=".8" opacity=".4"/>
+  <line x1="8" y1="28" x2="36" y2="28" stroke="#1a1714" stroke-width=".8" opacity=".4"/>
+  <line x1="17" y1="10" x2="17" y2="38" stroke="#1a1714" stroke-width=".8" opacity=".4"/>
+  <line x1="27" y1="10" x2="27" y2="38" stroke="#1a1714" stroke-width=".8" opacity=".4"/>
+  <text x="10" y="22" font-size="6" fill="#1a1714" opacity=".5">AB</text>
+  <text x="19" y="22" font-size="6" fill="#1a1714" opacity=".5">CD</text>
+  <text x="10" y="35" font-size="6" fill="#1a1714" opacity=".5">EF</text>
+  <text x="19" y="35" font-size="6" fill="#1a1714" opacity=".5">GH</text>
+  <text x="11" y="16" font-size="5" fill="#7a6f60">DATA</text>
+
+  <!-- arrow -->
+  <line x1="40" y1="24" x2="52" y2="24" stroke="#1a1714" stroke-width="2" stroke-linecap="round"/>
+  <polyline points="49,20 53,24 49,28" stroke="#1a1714" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- key above arrow -->
+  <text x="42" y="20" font-size="10" fill="#92400e">🔑</text>
+
+  <!-- encrypted grid -->
+  <rect x="55" y="10" width="28" height="28" rx="2" fill="#3d3530" stroke="#1a1714" stroke-width="1"/>
+  <line x1="55" y1="19" x2="83" y2="19" stroke="#c8bfaa" stroke-width=".8" opacity=".3"/>
+  <line x1="55" y1="28" x2="83" y2="28" stroke="#c8bfaa" stroke-width=".8" opacity=".3"/>
+  <line x1="64" y1="10" x2="64" y2="38" stroke="#c8bfaa" stroke-width=".8" opacity=".3"/>
+  <line x1="74" y1="10" x2="74" y2="38" stroke="#c8bfaa" stroke-width=".8" opacity=".3"/>
+  <text x="57" y="22" font-size="6" fill="#c8bfaa" opacity=".7">╬█</text>
+  <text x="66" y="22" font-size="6" fill="#c8bfaa" opacity=".7">▓░</text>
+  <text x="57" y="34" font-size="6" fill="#c8bfaa" opacity=".7">▒╗</text>
+  <text x="66" y="34" font-size="6" fill="#c8bfaa" opacity=".7">░╔</text>
+  <text x="57" y="16" font-size="5" fill="#c8bfaa" opacity=".6">ENCR</text>
+
+  <!-- Grover annotation -->
+  <text x="10" y="54" font-size="9" fill="#7a6f60" font-family="serif" font-style="italic">128-bit:</text>
+  <rect x="10" y="57" width="28" height="5" rx="1" fill="#fdba74" opacity=".6"/>
+  <text x="42" y="62" font-size="8" fill="#7a6f60">→</text>
+  <text x="10" y="70" font-size="9" fill="#7a6f60" font-family="serif" font-style="italic">256-bit:</text>
+  <rect x="10" y="73" width="64" height="5" rx="1" fill="#86efac" opacity=".7"/>
+</svg>
+      </div>
       <div class="section-header">
-        <div class="section-numeral">III</div>
+        <div class="section-numeral section-numeral-inline">III</div>
         <div>
           <div class="section-title">Data Encryption — Symmetric Cipher</div>
           <div class="section-desc">
