@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Quantum Risk Assessment</title>
+  <title>Quantum Security Check</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,300;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
@@ -1181,11 +1181,11 @@ function render(data, domain, port) {
         ${chainNote}
       </div>
       <div class="timeline">
-        <div class="tl-safe" style="width:30%"></div>
-        <div class="tl-danger" style="background:#92400e"></div>
+        <div class="tl-safe" style="width:50%"></div>
+        <div class="tl-danger" style="background:#92400e;flex:1"></div>
       </div>
-      <div class="tl-labels"><span>2020</span><span>▲ Now (2026)</span><span>2030–35 (CRQC)</span></div>
-      <div class="tl-note">🟡 Safe today — risk activates only when a CRQC is actively running</div>
+      <div class="tl-labels"><span>2020</span><span style="color:#92400e;font-weight:500">▲ 2026 — safe, approaching risk window</span><span>2030–35 (CRQC)</span></div>
+      <div class="tl-note">🟡 Safe today — risk activates only when a cryptographically relevant quantum computer is running, estimated 2029–2035</div>
     </div>`;
   }
 
@@ -1413,7 +1413,9 @@ const TIPS = {
   "RFC 8439":        "<strong>RFC 8439</strong> — A finalised internet standard for ChaCha20-Poly1305 encryption. Fully current.",
   "FIPS 197":        "<strong>FIPS 197</strong> — The long-standing US government standard for AES encryption. Fully current.",
 
+  "Shor's":     "<strong>Shor's algorithm</strong> — A quantum algorithm that efficiently breaks RSA and elliptic curve encryption by solving the underlying maths. A large quantum computer running this could crack today's certificates and key exchanges.",
   "Shor’s":     "<strong>Shor’s algorithm</strong> — A quantum algorithm that efficiently breaks RSA and elliptic curve encryption by solving the underlying maths. A large quantum computer running this could crack today’s certificates and key exchanges.",
+  "Grover's":   "<strong>Grover's algorithm</strong> — A quantum algorithm that halves the effective security of symmetric keys. A 128-bit key would behave like a 64-bit key. A 256-bit key still has enough headroom.",
   "Grover’s":   "<strong>Grover’s algorithm</strong> — A quantum algorithm that halves the effective security of symmetric keys. A 128-bit key would behave like a 64-bit key. A 256-bit key still has enough headroom.",
   "Resistant":       "<strong>Quantum-resistant</strong> — Built on maths that quantum computers cannot efficiently solve.",
   "Classical KEX":   "<strong>Classical key exchange</strong> — The key exchange uses pre-quantum algorithms. TLS 1.3 itself is good, but the key exchange inside may still need upgrading.",
