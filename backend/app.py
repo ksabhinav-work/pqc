@@ -251,29 +251,24 @@ def parse_cipher_suite(cipher_name):
     return algos
 
 
-def _fetch_aia_intermediates(leaf_der, seen_urls=None, depth=0):
+def _fetch_aia_intermediates(leaf_der, seen_urls=None, depth=0, errors=None):
     """
-    Walk the AIA caIssuers chain: fetch intermediate certs referenced in the
-    leaf (and each intermediate) until we reach a self-signed root or depth limit.
-    Returns [(role, der_bytes), ...] NOT including the leaf itself.
+    Walk AIA caIssuers chain to fetch intermediates + root.
+    Uses requests library (already available). Returns [(role, der_bytes), ...].
     """
     if depth > 4 or not HAS_CRYPTO:
         return []
-    if seen_urls is None:
-        seen_urls = set()
+    if seen_urls is None: seen_urls = set()
+    if errors    is None: errors    = []
+
     try:
-        from cryptography.x509 import (
-            AuthorityInformationAccess, ExtensionNotFound
-        )
+        from cryptography.x509 import AuthorityInformationAccess, ExtensionNotFound
         from cryptography.x509.oid import AuthorityInformationAccessOID
         cert = x509.load_der_x509_certificate(leaf_der)
         try:
             aia = cert.extensions.get_extension_for_class(AuthorityInformationAccess)
-            urls = [
-                desc.access_location.value
-                for desc in aia.value
-                if desc.access_method == AuthorityInformationAccessOID.CA_ISSUERS
-            ]
+            urls = [d.access_location.value for d in aia.value
+                    if d.access_method == AuthorityInformationAccessOID.CA_ISSUERS]
         except ExtensionNotFound:
             return []
 
@@ -283,27 +278,37 @@ def _fetch_aia_intermediates(leaf_der, seen_urls=None, depth=0):
                 continue
             seen_urls.add(url)
             try:
-                import urllib.request
-                with urllib.request.urlopen(url, timeout=5) as resp:
-                    raw = resp.read()
-                # Could be DER or PEM
+                if HAS_REQUESTS:
+                    resp = req_lib.get(url, timeout=6, verify=False,
+                                       headers={"User-Agent": "CryptoScanner/1.0"})
+                    raw = resp.content
+                else:
+                    import urllib.request
+                    with urllib.request.urlopen(url, timeout=6) as r:
+                        raw = r.read()
+
+                # DER or PEM?
                 if raw.strip().startswith(b"-----"):
-                    import base64
-                    b64 = b"".join(raw.split(b"\n")[1:-2])
+                    import base64, re as _re
+                    b64 = _re.sub(b"-----[^\n]+-----", b"", raw).replace(b"\n", b"")
                     der = base64.b64decode(b64)
                 else:
                     der = raw
-                # Check if self-signed (root)
+
                 iss_cert = x509.load_der_x509_certificate(der)
-                is_root = (iss_cert.subject == iss_cert.issuer)
-                role = "root" if is_root else "intermediate"
+                is_root  = (iss_cert.subject == iss_cert.issuer)
+                role     = "root" if is_root else "intermediate"
                 results.append((role, der))
                 if not is_root:
-                    results.extend(_fetch_aia_intermediates(der, seen_urls, depth+1))
-            except Exception:
+                    results.extend(
+                        _fetch_aia_intermediates(der, seen_urls, depth+1, errors)
+                    )
+            except Exception as e:
+                errors.append(f"AIA fetch {url}: {e}")
                 continue
         return results
-    except Exception:
+    except Exception as e:
+        errors.append(f"AIA parse depth={depth}: {e}")
         return []
 
 
@@ -360,6 +365,23 @@ def get_cert_chain(host, port=443, timeout=10):
         # Server sent leaf only — chase AIA to build the chain ourselves
         aia_chain = _fetch_aia_intermediates(leaf_der)
         result.extend(aia_chain)
+
+    # Re-label: if only 2 certs and last is not self-signed, it's intermediate not root
+    if len(result) >= 2:
+        relabeled = []
+        for i, (role, der) in enumerate(result):
+            if i == 0:
+                relabeled.append(("leaf", der))
+            elif i == len(result) - 1:
+                try:
+                    c = x509.load_der_x509_certificate(der)
+                    is_self = (c.subject == c.issuer)
+                    relabeled.append(("root" if is_self else "intermediate", der))
+                except Exception:
+                    relabeled.append((role, der))
+            else:
+                relabeled.append(("intermediate", der))
+        result = relabeled
 
     return result
 
@@ -521,9 +543,16 @@ def do_scan(host, port=443):
 
     # Certificate chain: leaf + intermediates + root
     if HAS_CRYPTO:
+        aia_errors = []
         chain = get_cert_chain(host, port)
         if not chain and der_cert:
             chain = [("leaf", der_cert)]
+        # AIA chase for any remaining leaf-only chains
+        if len(chain) == 1:
+            aia_extra = _fetch_aia_intermediates(chain[0][1], errors=aia_errors)
+            chain.extend(aia_extra)
+        if aia_errors:
+            meta["aia_errors"] = aia_errors
         chain_meta = []
         for role, der in chain:
             cert_findings, cert_meta = parse_cert(der_bytes=der, role=role)
@@ -537,7 +566,17 @@ def do_scan(host, port=443):
                                  "source": f["source"], **pqc_lookup(f["algo"])})
             if cert_meta:
                 chain_meta.append({"role": role, **cert_meta})
+            else:
+                # still log intermediate/root in chain_meta even without meta dict
+                try:
+                    c2 = x509.load_der_x509_certificate(der)
+                    cn_l = c2.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+                    chain_meta.append({"role": role,
+                                       "subject": cn_l[0].value if cn_l else "N/A"})
+                except Exception:
+                    chain_meta.append({"role": role})
         meta["cert_chain"] = chain_meta
+        meta["cert_chain_depth"] = len(chain)
 
     # HTTP headers
     if HAS_REQUESTS:
