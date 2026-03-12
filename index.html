@@ -751,7 +751,7 @@ const ALGO_WHAT_TO_DO = {
   "ECDH-P256":           "Configure the server to offer X25519+ML-KEM-768 as the preferred key exchange group. Most modern web servers (Nginx, Apache, Caddy) support this via a simple config change.",
   "ECDH-P384":           "Upgrade to X25519+ML-KEM-768 hybrid key exchange. P-384 offers no advantage over P-256 against quantum attacks — both are equally vulnerable to Shor's algorithm.",
   "ECDH-P521":           "Upgrade to X25519+ML-KEM-768 hybrid. The larger curve size does not help against quantum attacks.",
-  "X25519+Kyber768":     "This is an earlier draft of the hybrid standard. Upgrade to X25519+ML-KEM-768 (IANA 0x11ec) — the finalised version now deployed by Cloudflare and Google.",
+  "X25519+Kyber768":     "This is the pre-standard version (IANA 0x6399) and is being actively retired — the IETF draft explicitly obsoletes it and marks it Deprecated. Upgrade to X25519+ML-KEM-768 (IANA 0x11ec), the current version now deployed by Cloudflare, Google, and Apple.",
   "DH-2048":             "Disable DHE cipher suites entirely and switch to ECDHE or ML-KEM hybrid key exchange with TLS 1.3.",
   "DH-4096":             "Disable DHE cipher suites and switch to TLS 1.3 with X25519+ML-KEM-768 hybrid key exchange.",
   "RSA":                 "If this is a key exchange cipher (RSA key transport), disable it and enable TLS 1.3 with forward secrecy.",
@@ -794,10 +794,10 @@ const ALGO_WHAT_TO_DO = {
   "SHA3-512":            "Nothing to do — SHA3-512 is quantum-resistant.",
   "ML-KEM-768":          "Nothing to do — ML-KEM-768 is the current NIST standard for quantum-safe key exchange.",
   "ML-KEM-1024":         "Nothing to do — ML-KEM-1024 is the highest-security quantum-safe key exchange.",
-  "X25519+ML-KEM-768":   "Nothing to do — this hybrid is the currently recommended quantum-safe key exchange.",
-  "X25519+ML-KEM-1024":  "Nothing to do — this is the highest-security hybrid key exchange.",
-  "SecP256r1+ML-KEM-768":"Nothing to do — this hybrid is quantum-safe.",
-  "TLS-1.3":             "Nothing to do — TLS 1.3 is the recommended protocol version. Consider also enabling X25519+ML-KEM-768 key exchange if not already active.",
+  "X25519+ML-KEM-768":   "Nothing to do — X25519+ML-KEM-768 is the widely deployed hybrid and the practical standard for the transition period. The IETF draft (draft-ietf-tls-ecdhe-mlkem) is not yet a finalised RFC, but Google, Cloudflare, and Apple already use it in production.",
+  "X25519+ML-KEM-1024":  "Nothing to do — X25519+ML-KEM-1024 is the highest-security hybrid, suited for sensitive applications. Part of the same IETF draft as X25519+ML-KEM-768, not yet a finalised RFC.",
+  "SecP256r1+ML-KEM-768":"Nothing to do — SecP256r1+ML-KEM-768 is the FIPS-compliant hybrid variant (both components are FIPS-approved). Part of the same IETF draft, not yet finalised.",
+  "TLS-1.3":             "__TLS13__",
 };
 
 // Paper theme threat colors — desaturated, ink-like
@@ -969,7 +969,7 @@ function render(data, domain, port) {
       </div>
     </div>
     ${meta.kex_probe ? `<div class="info-note">ℹ️ <strong>TLS 1.3 not available:</strong> ${meta.kex_probe}</div>` : ""}
-    ${kexFindings.map(f => findingCard(f)).join("")}
+    ${kexFindings.map(f => findingCard(f, null, hndl_risk)).join("")}
   </div>`;
 
   // Section 2
@@ -1029,7 +1029,7 @@ function render(data, domain, port) {
       </div>
     </div>
     ${meta.certificate ? certBlock(meta.certificate, meta.cert_chain) : ""}
-    ${certFindings.map(f => findingCard(f, meta.cert_chain)).join("")}
+    ${certFindings.map(f => findingCard(f, meta.cert_chain, hndl_risk)).join("")}
   </div>`;
 
   // Section 3
@@ -1089,7 +1089,7 @@ function render(data, domain, port) {
           </div>
         </div>
       </div>
-      ${symFindings.map(f => findingCard(f)).join("")}
+      ${symFindings.map(f => findingCard(f, null, hndl_risk)).join("")}
     </div>`;
   }
 
@@ -1216,13 +1216,18 @@ function render(data, domain, port) {
   document.getElementById("results").innerHTML = html;
 }
 
-function findingCard(f, chain) {
+function findingCard(f, chain, hndl_risk) {
   const s  = threatStyle(f.threat);
   const id = "d" + Math.random().toString(36).slice(2,9);
   const plain   = ALGO_PLAIN[f.algo]       || f.context || "";
   const howQ    = ALGO_HOW_QUANTUM[f.algo] || "";
 
   let whatToDo = ALGO_WHAT_TO_DO[f.algo] || f.migrate || "";
+  if (whatToDo === "__TLS13__") {
+    whatToDo = hndl_risk
+      ? "TLS 1.3 is active — also enable X25519+ML-KEM-768 hybrid key exchange to protect against harvest attacks."
+      : "Nothing to do — TLS 1.3 is active and the key exchange is already quantum-safe.";
+  }
   const ctx = f.context || "";
 
   const CA_OPERATORS = {
@@ -1398,13 +1403,13 @@ const TIPS = {
   "Conditional":     "<strong>Conditional</strong> — Safe only under strict server configuration. A stepping stone, not a destination.",
   "Deprecated":      "<strong>Deprecated</strong> — Officially retired. Servers should no longer offer or accept this.",
   "Withdrawn":       "<strong>Withdrawn</strong> — Banned. Known to be broken or dangerously weak.",
-  "Pre-FIPS draft":  "<strong>Pre-FIPS draft</strong> — An earlier version of what became a final standard. Quantum-resistant in practice, but not the approved form.",
+  "Pre-FIPS draft":  "<strong>Pre-FIPS draft</strong> — An earlier pre-standardisation version. For Kyber/X25519+Kyber768 specifically, this code point is being actively deprecated by the IETF and should be replaced with the finalised X25519+ML-KEM-768. For Dilithium/Falcon/SPHINCS+, these are earlier names for what became ML-DSA, FN-DSA, and SLH-DSA.",
   "Approved":        "<strong>Approved</strong> — Meets current government standards, but not yet quantum-safe at this key size.",
   "FIPS 203 (2024)": "<strong>FIPS 203</strong> — The US government standard for quantum-safe key exchange, finalised in 2024. The gold standard right now.",
   "FIPS 204 (2024)": "<strong>FIPS 204</strong> — The US government standard for quantum-safe digital signatures, finalised in 2024.",
   "FIPS 205 (2024)": "<strong>FIPS 205</strong> — The US government standard for hash-based quantum-safe signatures, finalised in 2024.",
   "FIPS 206 (2024)": "<strong>FIPS 206</strong> — The US government standard for lattice-based quantum-safe signatures (Falcon), finalised in 2024.",
-  "IETF Draft":      "<strong>IETF Draft</strong> — A proposed internet standard under review. Widely deployed in practice (Google, Cloudflare use it), but not yet final.",
+  "IETF Draft":      "<strong>IETF Draft</strong> — A proposed internet standard still going through the IETF process (draft-ietf-tls-ecdhe-mlkem, currently at revision 04). Widely deployed by Google, Cloudflare, and Apple, but not yet a finalised RFC. IANA has registered the code points with ‘Recommended: N’ pending finalisation.",
   "RFC 8439":        "<strong>RFC 8439</strong> — A finalised internet standard for ChaCha20-Poly1305 encryption. Fully current.",
   "FIPS 197":        "<strong>FIPS 197</strong> — The long-standing US government standard for AES encryption. Fully current.",
 
