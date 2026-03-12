@@ -706,7 +706,7 @@ function threatStyle(threat) {
     HIGH:     { color:"#9a3412", bg:"#fff7ed",   border:"#fdba74",  emoji:"🟠", label:"High Risk" },
     MEDIUM:   { color:"#92400e", bg:"#fffbeb",   border:"#fcd34d",  emoji:"🟡", label:"Medium" },
     LOW:      { color:"#14532d", bg:"#f0fdf4",   border:"#86efac",  emoji:"🟢", label:"Low Risk" },
-    NONE:     { color:"#1e3a5f", bg:"#eff6ff",   border:"#93c5fd",  emoji:"🔵", label:"Safe" },
+    NONE:     { color:"#14532d", bg:"#f0fdf4",   border:"#86efac",  emoji:"🟢", label:"Safe" },
     UNKNOWN:  { color:"#7a6f60", bg:"#faf7f2",   border:"#c8bfaa",  emoji:"⚪", label:"Unknown" },
   };
   return map[threat] || map.UNKNOWN;
@@ -1053,7 +1053,7 @@ function findingCard(f, chain) {
   const hasDetails = howQ || whatToDo;
 
   return `
-  <div class="finding-card">
+  <div class="finding-card" style="background:${s.bg};border-color:${s.border}">
     <div class="finding-top">
       <div>
         <div class="finding-algo" style="color:${s.color}">${f.algo}</div>
