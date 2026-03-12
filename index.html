@@ -196,11 +196,11 @@
     }
     /* PQC-verified pill — slightly darker keycap */
     .eg-pill--pqc {
-      background: linear-gradient(180deg, #d8d0c4 0%, #c8c0b4 100%);
-      border-color: #a09080;
-      border-bottom-color: #807060;
-      box-shadow: 0 1px 0 #807060, inset 0 1px 0 rgba(255,255,255,.5);
-      color: #3a3028;
+      background: linear-gradient(180deg, #d0c8bc 0%, #c0b8ac 100%);
+      border-color: #908880;
+      border-bottom-color: #706860;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.45);
+      color: #2a2420;
     }
 
     /* ── STATUS ────────────────────────────────────────────── */
@@ -731,7 +731,6 @@ function packPills() {
     const row = [];
     let rowUsed = 0;
 
-    // Start with first (heaviest) remaining
     row.push(remaining[0]);
     rowUsed += remaining[0].w;
     remaining.splice(0, 1);
