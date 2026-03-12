@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Quantum Security Check</title>
+  <title>Quantum Risk Assessment</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,300;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
@@ -836,14 +836,14 @@ function verdictFor(score, hndl, imp, findings) {
   // B: classical KEX, cert decent, nothing broken
   if (hndl && score >= 3)
     return { grade:"B", color:"#92400e", bg:"#fffbeb", border:"#fcd34d",
-      phrase:"Harvest risk active, identity safe",
-      plain:"Encrypted traffic from today could be stored and decrypted in the future when quantum computers arrive. The certificate itself is in reasonable shape — identity is not yet at risk." };
+      phrase:"Harvest risk active, certificates vulnerable in quantum era",
+      plain:"Encrypted traffic from today could be stored and decrypted once quantum computers arrive. The certificate uses classical algorithms — it is fine by today's standards but will need upgrading when quantum-safe certificates become available from certificate authorities." };
 
   // C: classical KEX, weak cert
   if (hndl && score >= 1)
     return { grade:"C", color:"#9a3412", bg:"#fff7ed", border:"#fdba74",
-      phrase:"Harvest risk active, identity at risk",
-      plain:"Encrypted traffic can be harvested now and decrypted later. The certificate also uses weak algorithms, meaning an attacker may eventually be able to forge it and impersonate this site." };
+      phrase:"Harvest risk active, certificate weak today",
+      plain:"Encrypted traffic can be harvested now and decrypted later. The certificate also uses outdated algorithms that are weak by today's standards — this is an immediate concern, independent of quantum computers." };
 
   // D: deprecated but not withdrawn
   if (score >= 1)
