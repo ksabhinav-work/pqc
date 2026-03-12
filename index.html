@@ -1015,6 +1015,7 @@ function render(data, domain, port) {
     </div>
     ${meta.kex_probe ? `<div class="info-note">ℹ️ <strong>TLS 1.3 not available:</strong> ${meta.kex_probe}</div>` : ""}
     ${kexFindings.map(f => findingCard(f, null, hndl_risk)).join("")}
+    ${categorySummary("kex", kexFindings, hndl_risk)}
   </div>`;
 
   // Section 2
@@ -1075,6 +1076,7 @@ function render(data, domain, port) {
     </div>
     ${meta.certificate ? certBlock(meta.certificate, meta.cert_chain) : ""}
     ${certFindings.map(f => findingCard(f, meta.cert_chain, hndl_risk)).join("")}
+    ${categorySummary("cert", certFindings, hndl_risk, meta.cert_chain)}
   </div>`;
 
   // Section 3
@@ -1135,6 +1137,7 @@ function render(data, domain, port) {
         </div>
       </div>
       ${symFindings.map(f => findingCard(f, null, hndl_risk)).join("")}
+      ${categorySummary("sym", symFindings, hndl_risk)}
     </div>`;
   }
 
@@ -1261,6 +1264,57 @@ function render(data, domain, port) {
   document.getElementById("results").innerHTML = html;
 }
 
+
+function categorySummary(category, findings, hndl_risk, certChain) {
+  let title = "", body = "", color = "#5a5040", bg = "#f5f0e8", border = "#c8bfaa";
+
+  if (category === "kex") {
+    if (!hndl_risk) {
+      title = "✅ Nothing to do — key exchange is quantum-safe";
+      body  = "This site already negotiates <strong>X25519+ML-KEM-768</strong> hybrid key exchange. Traffic recorded today cannot be decrypted by a future quantum computer. No configuration change is needed.";
+      color = "#14532d"; bg = "#f0fdf4"; border = "#86efac";
+    } else {
+      title = "⚠️ Action available — enable quantum-safe key exchange";
+      body  = "Enable <strong>TLS 1.3</strong> with the <strong>X25519+ML-KEM-768</strong> hybrid group (IANA 0x11ec). Major CDNs — Cloudflare, Fastly, AWS CloudFront — already support this. If you use one of these, it may be a single toggle. This is the single most impactful step available today.";
+      color = "#9a3412"; bg = "#fff7ed"; border = "#fdba74";
+    }
+  }
+
+  else if (category === "cert") {
+    // Check chain composition
+    const hasLeaf = findings.some(f => f.context && f.context.includes("Leaf"));
+    const hasIntermediate = findings.some(f => f.context && f.context.includes("Intermediate"));
+    const hasRoot = findings.some(f => f.context && f.context.includes("Root"));
+
+    title = "🕐 No action possible right now — this is a future ecosystem problem";
+    let parts = [];
+    if (hasLeaf) parts.push("<strong>Leaf certificate:</strong> No certificate authority currently issues quantum-safe certificates, and no browser validates them. This is a known gap across the entire internet — watch for CA support expected in 2026–2027.");
+    if (hasIntermediate) parts.push("<strong>Intermediate CA:</strong> This must be upgraded by the issuing CA, not the website owner. Expected 2027–2030.");
+    if (hasRoot) parts.push("<strong>Root CA:</strong> Requires coordinated migration across the CA, browser vendors, and OS makers. Expected 2028–2033.");
+    body = parts.join("<br><br>");
+    color = "#92400e"; bg = "#fffbeb"; border = "#fcd34d";
+  }
+
+  else if (category === "sym") {
+    const hasBad = findings.some(f => ["CRITICAL","HIGH","MEDIUM"].includes(f.threat));
+    if (!hasBad) {
+      title = "✅ Nothing to do — symmetric cipher is quantum-safe";
+      body  = "AES-256-GCM and ChaCha20-Poly1305 have 256-bit keys, giving 128-bit post-quantum security after Grover's algorithm — well above the safety threshold.";
+      color = "#14532d"; bg = "#f0fdf4"; border = "#86efac";
+    } else {
+      title = "⚠️ Action available — upgrade symmetric cipher";
+      body  = "Replace AES-128 with <strong>AES-256-GCM</strong> or <strong>ChaCha20-Poly1305</strong>. Grover's algorithm halves effective key length — AES-128 drops to 64-bit post-quantum security, which is insufficient. This is configurable in your TLS cipher suite priority list.";
+      color = "#9a3412"; bg = "#fff7ed"; border = "#fdba74";
+    }
+  }
+
+  return `
+  <div class="action-card" style="border-left-color:${color};background:${bg};margin-top:12px">
+    <div class="action-title" style="color:${color}">${title}</div>
+    <div class="action-body">${body}</div>
+  </div>`;
+}
+
 function findingCard(f, chain, hndl_risk) {
   const s  = threatStyle(f.threat);
   const id = "d" + Math.random().toString(36).slice(2,9);
@@ -1370,7 +1424,7 @@ function findingCard(f, chain, hndl_risk) {
     <div class="finding-details" id="${id}">
       <div class="detail-grid">
         ${howQ     ? `<div class="detail-label"><span class="jargon" data-tip="Quantum attack">How quantum computers attack this</span></div><div class="detail-value">${howQ}</div>` : ""}
-        ${whatToDo ? `<div class="detail-label">What to do</div><div class="detail-value ${f.threat==='NONE'||f.threat==='LOW'?'good':'warn'}">${whatToDo}</div>` : ""}
+
         <div class="detail-label"><span class="jargon" data-tip="Attack type">Attack type</span></div>
         <div class="detail-value">${f.quantum ? `<span class="jargon" data-tip="${f.quantum}">${f.quantum}</span>` : "N/A"}</div>
         <div class="detail-label"><span class="jargon" data-tip="NIST status">NIST status</span></div>
