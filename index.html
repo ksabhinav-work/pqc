@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Quantum Security Check</title>
+  <title>Quantum Risk Assessment</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,300;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
@@ -187,6 +187,14 @@
       top: 2px;
       box-shadow: 0 0 0 var(--key-shadow), inset 0 1px 0 rgba(255,255,255,.4);
       background: linear-gradient(180deg, #e4ddd0 0%, #d8d0c4 100%);
+    }
+    /* PQC-verified pill — slightly darker keycap */
+    .eg-pill--pqc {
+      background: linear-gradient(180deg, #d8d0c4 0%, #c8c0b4 100%);
+      border-color: #a09080;
+      border-bottom-color: #807060;
+      box-shadow: 0 1px 0 #807060, inset 0 1px 0 rgba(255,255,255,.5);
+      color: #3a3028;
     }
 
     /* ── STATUS ────────────────────────────────────────────── */
@@ -572,7 +580,7 @@
   <div class="scan-box">
     <div class="scan-row">
       <div class="scan-prefix">https://</div>
-      <input id="domain-input" type="text" placeholder="youtube.com · ifsca.gov.in · cloudflare.com"
+      <input id="domain-input" type="text" placeholder="ifsca.gov.in · dea.gov.in · finmin.nic.in"
              autocomplete="off" spellcheck="false"/>
     </div>
     <button id="scan-btn" onclick="scan()">Inspect →</button>
@@ -584,6 +592,7 @@
       <span class="eg-pill" onclick="pick('irdai.gov.in')">irdai.gov.in</span>
       <span class="eg-pill" onclick="pick('pfrda.org.in')">pfrda.org.in</span>
       <span class="eg-pill" onclick="pick('finmin.nic.in')">finmin.nic.in</span>
+      <span class="eg-pill" onclick="pick('dea.gov.in')">dea.gov.in</span>
       <span class="eg-pill" onclick="pick('idrbt.ac.in')">idrbt.ac.in</span>
       <!-- IFSCA MII -->
       <span class="eg-pill" onclick="pick('indiainx.com')">indiainx.com</span>
@@ -622,26 +631,26 @@
       <span class="eg-pill" onclick="pick('citibank.com')">citibank.com</span>
       <span class="eg-pill" onclick="pick('hsbc.com')">hsbc.com</span>
       <!-- Insurance -->
-      <span class="eg-pill" onclick="pick('licindia.in')">licindia.in</span>
       <span class="eg-pill" onclick="pick('gicofindia.com')">gicofindia.com</span>
+      <span class="eg-pill" onclick="pick('licindia.in')">licindia.in</span>
       <span class="eg-pill" onclick="pick('newindia.co.in')">newindia.co.in</span>
       <span class="eg-pill" onclick="pick('hdfclife.com')">hdfclife.com</span>
+      <span class="eg-pill" onclick="pick('swissre.com')">swissre.com</span>
       <span class="eg-pill" onclick="pick('iciciprulife.com')">iciciprulife.com</span>
       <span class="eg-pill" onclick="pick('starhealth.in')">starhealth.in</span>
       <span class="eg-pill" onclick="pick('bajajallianz.com')">bajajallianz.com</span>
       <span class="eg-pill" onclick="pick('tataaia.com')">tataaia.com</span>
       <span class="eg-pill" onclick="pick('munichre.com')">munichre.com</span>
-      <span class="eg-pill" onclick="pick('swissre.com')">swissre.com</span>
       <!-- Brokers -->
       <span class="eg-pill" onclick="pick('anandrathigiftcity.com')">anandrathigiftcity.com</span>
-      <span class="eg-pill" onclick="pick('indmoney.com')">indmoney.com</span>
       <span class="eg-pill" onclick="pick('emkayglobal.com')">emkayglobal.com</span>
+      <span class="eg-pill" onclick="pick('indmoney.com')">indmoney.com</span>
       <span class="eg-pill" onclick="pick('icicidirect.com')">icicidirect.com</span>
-      <span class="eg-pill" onclick="pick('motilaloswal.com')">motilaloswal.com</span>
       <span class="eg-pill" onclick="pick('angelone.in')">angelone.in</span>
+      <span class="eg-pill" onclick="pick('motilaloswal.com')">motilaloswal.com</span>
       <span class="eg-pill" onclick="pick('zerodha.com')">zerodha.com</span>
-      <span class="eg-pill" onclick="pick('groww.in')">groww.in</span>
       <span class="eg-pill" onclick="pick('indiainfoline.com')">indiainfoline.com</span>
+      <span class="eg-pill" onclick="pick('groww.in')">groww.in</span>
       <!-- Fund Managers -->
       <span class="eg-pill" onclick="pick('sbimf.com')">sbimf.com</span>
       <span class="eg-pill" onclick="pick('hdfcfund.com')">hdfcfund.com</span>
@@ -652,14 +661,10 @@
       <!-- Global Bodies -->
       <span class="eg-pill" onclick="pick('bis.org')">bis.org</span>
       <span class="eg-pill" onclick="pick('imf.org')">imf.org</span>
-      <span class="eg-pill" onclick="pick('swift.com')">swift.com</span>
       <span class="eg-pill" onclick="pick('fsb.org')">fsb.org</span>
+      <span class="eg-pill" onclick="pick('swift.com')">swift.com</span>
       <span class="eg-pill" onclick="pick('iosco.org')">iosco.org</span>
       <span class="eg-pill" onclick="pick('fatf-gafi.org')">fatf-gafi.org</span>
-      <!-- PQC Reference -->
-      <span class="eg-pill" onclick="pick('cloudflare.com')">cloudflare.com</span>
-      <span class="eg-pill" onclick="pick('google.com')">google.com</span>
-      <span class="eg-pill" onclick="pick('youtube.com')">youtube.com</span>
     </div>
   </div>
 
@@ -857,10 +862,42 @@ function verdictFor(score, hndl, imp, findings) {
     plain:"This site uses encryption algorithms that have been officially withdrawn or are considered broken. Connections are not secure." };
 }
 
+// Domains confirmed to support X25519+ML-KEM-768 hybrid KEX.
+// Cloudflare deploys it by default for all customers (since late 2023).
+// Google/YouTube run it on their own infrastructure.
+// This set grows dynamically as you scan — any domain that comes back
+// with hndl_risk=false (quantum-safe KEX) gets added automatically.
+const PQC_DOMAINS = new Set([
+  // Google infrastructure
+  'google.com', 'youtube.com',
+  // Cloudflare (and Cloudflare-hosted fintechs)
+  'cloudflare.com',
+  'groww.in', 'zerodha.com', 'angelone.in', 'indmoney.com',
+  'cdslindia.com', 'swissre.com', 'licindia.in',
+  'fsb.org', 'iosco.org',
+  // Verified by scan — add more as you discover them
+]);
+
+function markPqcPills() {
+  document.querySelectorAll('.eg-pill').forEach(pill => {
+    // extract domain from onclick="pick('domain')"
+    const m = pill.getAttribute('onclick')?.match(/pick\('([^']+)'\)/);
+    if (!m) return;
+    if (PQC_DOMAINS.has(m[1])) {
+      pill.classList.add('eg-pill--pqc');
+    } else {
+      pill.classList.remove('eg-pill--pqc');
+    }
+  });
+}
+
 function pick(d) {
   document.getElementById("domain-input").value = d;
   document.getElementById("domain-input").focus();
 }
+
+// Run on load
+document.addEventListener('DOMContentLoaded', markPqcPills);
 
 function setStatus(msg, spin=false) {
   document.getElementById("status").innerHTML = (spin ? `<span class="spinner"></span>` : "") + msg;
@@ -902,6 +939,12 @@ async function scan() {
 function render(data, domain, port) {
   const { findings, portfolio_score, hndl_risk, impersonation_risk,
           impersonation_count, meta } = data;
+
+  // Dynamically learn which domains are PQC-capable
+  if (!hndl_risk) {
+    PQC_DOMAINS.add(domain);
+    markPqcPills();
+  }
   const chainDepth = meta.cert_chain_depth || 1;
   const chainBreakdown = (meta.cert_chain || []).map(c =>
     `${c.role === 'leaf' ? "🌿 <span class='jargon' data-tip='Leaf certificate'>Leaf certificate</span>" : c.role === 'intermediate' ? "🔗 <span class='jargon' data-tip='Intermediate CA'>Intermediate CA</span>" : "🏛 <span class='jargon' data-tip='Root CA'>Root CA</span>"}: ${c.subject || 'N/A'}`
