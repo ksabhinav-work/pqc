@@ -258,13 +258,13 @@ const ALGO_PLAIN = {
   "ChaCha20-Poly1305":    "Modern cipher with 256-bit key. Quantum-resistant for practical purposes.",
   "3DES":                 "Very old — Triple DES. Officially deprecated. Should not be in use.",
   "RC4":                  "Broken cipher. Should never be used.",
-  "ECDSA-P256":           "Signs this site's certificate. A quantum computer could forge this signature and impersonate the server.",
-  "ECDSA-P384":           "Stronger ECDSA signature. Same quantum vulnerability.",
-  "RSA-PKCS1-2048":       "Classic RSA signature on the certificate. A quantum computer could crack this.",
-  "RSA-PKCS1-3072":       "Larger RSA signature. Same quantum weakness.",
-  "RSA-PKCS1-4096":       "Large RSA signature. Quantum-vulnerable.",
-  "RSA-PSS-2048":         "RSA-PSS signature scheme — quantum-vulnerable.",
-  "Ed25519":              "Modern signature, fast and clean — but still quantum-vulnerable.",
+  "ECDSA-P256":           "Signs this certificate using elliptic curve cryptography. A quantum computer running Shor's algorithm could forge this signature and impersonate the server.",
+  "ECDSA-P384":           "Stronger elliptic curve signature. Same quantum vulnerability as P-256, just needs a slightly larger quantum computer.",
+  "RSA-PKCS1-2048":       "RSA-2048 signature — used to sign this certificate or a CA certificate in the chain. A quantum computer running Shor's algorithm could factor the underlying key and forge signatures, breaking the entire trust chain below it.",
+  "RSA-PKCS1-3072":       "RSA-3072 signature. Stronger classically than 2048-bit, but still broken by a quantum computer. Appears in a CA certificate in the trust chain.",
+  "RSA-PKCS1-4096":       "RSA-4096 signature — typically used by root CAs for their long-lived keys. Quantum-vulnerable, but requires a larger quantum computer to break than 2048-bit.",
+  "RSA-PSS-2048":         "RSA-PSS is a more modern RSA padding scheme. The underlying key is still quantum-vulnerable — the padding doesn't help against Shor's algorithm.",
+  "Ed25519":              "Modern elliptic curve signature, very efficient. Still quantum-vulnerable via Shor's algorithm.",
   "ML-DSA-44":            "New quantum-safe signature standard (FIPS 204). Fully resistant.",
   "ML-DSA-65":            "Quantum-safe signature, medium security level. NIST standard.",
   "ML-DSA-87":            "Highest security quantum-safe signature. NIST standard.",
@@ -289,8 +289,10 @@ const ALGO_HOW_QUANTUM = {
   "RSA-4096":        "Shor's Algorithm: still broken by quantum, just requires more qubits.",
   "ECDSA-P256":      "Shor's Algorithm: the same math that breaks ECDH key exchange also breaks ECDSA signatures. An attacker could forge the website's certificate.",
   "ECDSA-P384":      "Shor's Algorithm: same signature forgery attack on a larger curve.",
-  "RSA-PKCS1-2048":  "Shor's Algorithm: RSA signatures rely on the same integer factoring that quantum computers can break.",
-  "RSA-PSS-2048":    "Shor's Algorithm: the PSS padding scheme doesn't protect against quantum factoring of the underlying RSA key.",
+  "RSA-PKCS1-2048":  "Shor's Algorithm: RSA security depends on the difficulty of factoring large numbers. Shor's algorithm solves this exponentially faster than any classical computer — a 2048-bit RSA key could be broken in hours on a mature CRQC.",
+  "RSA-PKCS1-3072":  "Shor's Algorithm: same factoring attack as RSA-2048. The larger key needs a bigger quantum computer but is still broken by the same algorithm.",
+  "RSA-PKCS1-4096":  "Shor's Algorithm: same factoring attack. 4096-bit RSA is commonly used by root CAs because of its long validity period — but it is still quantum-vulnerable.",
+  "RSA-PSS-2048":    "Shor's Algorithm: the PSS padding scheme is an improvement over PKCS1 padding for classical security, but it doesn't help against quantum factoring of the RSA modulus.",
   "Ed25519":         "Shor's Algorithm: Ed25519 is based on elliptic curves, susceptible to the same attack.",
   "AES-128-GCM":     "Grover's Algorithm: quantum search halves effective key length from 128 bits to 64 bits. Not immediately catastrophic but below recommended thresholds.",
   "AES-128-CBC":     "Grover's Algorithm: 64-bit effective post-quantum security. The mode (CBC) is also outdated.",
@@ -308,9 +310,10 @@ const ALGO_WHAT_TO_DO = {
   "RSA-2048":        "If used for key exchange: migrate to TLS 1.3. If on a certificate: reissue with ECDSA or ML-DSA key.",
   "ECDSA-P256":      "When certificate authorities begin issuing ML-DSA certificates (in progress), reissue your certificate with an ML-DSA-44 key.",
   "ECDSA-P384":      "Reissue certificate with ML-DSA-65 when CA support is available.",
-  "RSA-PKCS1-2048":  "Reissue certificate with ML-DSA-65 signature.",
-  "RSA-PKCS1-3072":  "Reissue certificate with ML-DSA-65 signature.",
-  "RSA-PSS-2048":    "Reissue certificate with ML-DSA-65 signature.",
+  "RSA-PKCS1-2048":  "If this is the leaf certificate: reissue with ML-DSA-65 when your CA supports it. If this is an intermediate CA: the CA operator (e.g. DigiCert, Let's Encrypt, Google Trust Services) must migrate their infrastructure — this is happening industry-wide.",
+  "RSA-PKCS1-3072":  "CA infrastructure migration required. The certificate authority that issued this cert must upgrade to ML-DSA. This is not something the website owner can do alone.",
+  "RSA-PKCS1-4096":  "Root CA migration — the longest lead time in the entire PKI ecosystem. Root CAs are embedded in operating systems and browsers; rotating them takes years. Root CA operators (DigiCert, GlobalSign, etc.) are planning this migration now.",
+  "RSA-PSS-2048":    "Reissue certificate with ML-DSA-65 signature when CA support is available.",
   "Ed25519":         "Reissue certificate with ML-DSA-44 signature.",
   "AES-128-GCM":     "Configure server cipher suite preferences to prioritise AES-256-GCM or ChaCha20-Poly1305.",
   "SHA-256":         "Acceptable for now — move toward SHA-384 when issuing new certificates.",
@@ -393,7 +396,12 @@ async function scan() {
 }
 
 function render(data, domain, port) {
-  const { findings, portfolio_score, hndl_risk, impersonation_risk, meta } = data;
+  const { findings, portfolio_score, hndl_risk, impersonation_risk,
+          impersonation_count, meta } = data;
+  const chainDepth = meta.cert_chain_depth || 1;
+  const chainBreakdown = (meta.cert_chain || []).map(c =>
+    `${c.role === "leaf" ? "🌿 Leaf" : c.role === "intermediate" ? "🔗 Intermediate CA" : "🏛 Root CA"}: ${c.subject || "N/A"}`
+  ).join("<br>");
   const v = verdictFor(portfolio_score, hndl_risk, impersonation_risk);
   let html = "";
 
@@ -443,8 +451,8 @@ function render(data, domain, port) {
         </div>
       </div>
     </div>
-    ${meta.certificate ? certBlock(meta.certificate) : ""}
-    ${certFindings.map(f => findingCard(f)).join("")}
+    ${meta.certificate ? certBlock(meta.certificate, meta.cert_chain) : ""}
+    ${certFindings.map(f => findingCard(f, meta.cert_chain)).join("")}
   </div>`;
 
   // SECTION 3: Encryption
@@ -507,28 +515,41 @@ function render(data, domain, port) {
   }
 
   if (impersonation_risk) {
+    const chainNote = chainDepth > 1
+      ? `<br><br><strong>Why are there ${impersonation_count} findings for certificates?</strong><br>
+         This is <em>one shared problem</em>, not ${impersonation_count} independent risks. Every website's
+         identity depends on a chain of trust — the leaf cert is signed by an intermediate CA, which is
+         signed by a root CA. All links in the chain must be quantum-safe for the chain to be secure.
+         Currently <strong>none</strong> of them are, because no CA has yet deployed ML-DSA.
+         This is an industry-wide transition, not a problem unique to this site.<br><br>
+         <strong>Chain inspected:</strong><br>${chainBreakdown}`
+      : "";
     html += `
     <div class="action-card" style="border-color:rgba(255,214,10,.3);background:rgba(255,214,10,.05)">
-      <div class="action-title" style="color:#ffd60a">🟡 Certificate Forgery — A Future Risk, Not Immediate</div>
+      <div class="action-title" style="color:#ffd60a">🟡 Certificate Trust Chain — Future Forgery Risk, Not Immediate</div>
       <div class="action-body">
-        The certificate uses a classical signature algorithm. A quantum computer could eventually break the signature
-        — but only with an <strong>active CRQC at the time of the attack</strong>.
-        Past sessions are <strong>not exposed by this</strong>. This is why key exchange is the more urgent problem.
+        <strong>What this means:</strong> Every HTTPS website has a "chain of trust" — like a chain of notarised
+        documents. Your browser trusts the website because a Certificate Authority (CA) vouched for it,
+        and your operating system trusts that CA. A quantum computer could eventually forge any link in this chain,
+        allowing an attacker to impersonate the website.
+        <br><br>
+        <strong>Crucially:</strong> this attack requires an active CRQC <em>at the time of the attack</em>.
+        It cannot be used to expose past sessions — that is the key exchange problem (HNDL).
+        Past sessions are <strong>safe from this specific risk</strong>.
         <br><br>
         <strong>What the timeline looks like:</strong><br>
-        • Safe now — no quantum computer exists yet<br>
-        • Risk begins when CRQCs are deployed, estimated <strong>2029–2035</strong><br>
-        • Certificate authorities (CAs) are currently building ML-DSA support — the ecosystem will transition industry-wide<br>
-        <br>
-        <strong>What site owners should do:</strong> When CAs begin issuing ML-DSA certificates (expected 2025–2027),
-        reissue the site's certificate. This requires CA ecosystem readiness — not just the site owner.
+        • ✅ Safe today — no quantum computer capable of this exists yet<br>
+        • ⚠️ Risk begins when CRQCs are deployed, estimated <strong>2029–2035</strong><br>
+        • 🔄 CAs (DigiCert, Let's Encrypt, Google Trust Services) are planning ML-DSA migration<br>
+        • 📋 NIST finalised ML-DSA (FIPS 204) in 2024 — CA ecosystem is catching up<br>
+        ${chainNote}
       </div>
       <div class="timeline">
         <div class="tl-safe" style="width:30%"></div>
         <div class="tl-danger" style="background:#ffd60a"></div>
       </div>
       <div class="tl-labels"><span>2020</span><span>▲ NOW (2026)</span><span>2030–35 (CRQC)</span></div>
-      <div class="tl-note">🟡 Safe today — risk activates when a CRQC is actively deployed</div>
+      <div class="tl-note">🟡 Safe today — risk activates only when a CRQC is actively running</div>
     </div>`;
   }
 
@@ -569,12 +590,24 @@ function render(data, domain, port) {
   document.getElementById("results").innerHTML = html;
 }
 
-function findingCard(f) {
+function findingCard(f, chain) {
   const s   = threatStyle(f.threat);
   const id  = "d" + Math.random().toString(36).slice(2,9);
   const plain    = ALGO_PLAIN[f.algo]        || f.context || "";
   const howQ     = ALGO_HOW_QUANTUM[f.algo]  || "";
-  const whatToDo = ALGO_WHAT_TO_DO[f.algo]   || f.migrate || "";
+
+  // Role-aware what-to-do: intermediate and root have different owners
+  let whatToDo = ALGO_WHAT_TO_DO[f.algo] || f.migrate || "";
+  const ctx = f.context || "";
+  if (ctx.includes("Intermediate CA") && f.category === "Signature") {
+    whatToDo = "This certificate belongs to the Certificate Authority (CA), not the website owner. " +
+      "The CA operator (e.g. DigiCert, Google Trust Services, Let's Encrypt) must migrate their " +
+      "infrastructure to ML-DSA. This is happening industry-wide and is expected before 2030.";
+  } else if (ctx.includes("Root CA") && f.category === "Signature") {
+    whatToDo = "Root CAs are the hardest to migrate — they are embedded in every operating system " +
+      "and browser. Root CA operators (GlobalSign, DigiCert, ISRG) are planning this transition now, " +
+      "but it will take the longest. Expected timeline: 2028–2033.";
+  }
   const hasDetails = howQ || whatToDo;
 
   return `
@@ -606,15 +639,39 @@ function findingCard(f) {
   </div>`;
 }
 
-function certBlock(c) {
-  const exp = new Date(c.not_after);
+function certBlock(c, chain) {
+  const exp  = new Date(c.not_after);
   const days = Math.round((exp - new Date()) / 86400000);
-  const col = days < 30 ? "#ff3355" : days < 90 ? "#ffd60a" : "#2ecc71";
+  const col  = days < 30 ? "#ff3355" : days < 90 ? "#ffd60a" : "#2ecc71";
+
+  // Build chain diagram
+  let chainHtml = "";
+  if (chain && chain.length > 1) {
+    const roleIcon  = { leaf:"🌿", intermediate:"🔗", root:"🏛" };
+    const roleLabel = { leaf:"Leaf cert (this site)", intermediate:"Intermediate CA (vouches for the leaf)", root:"Root CA (trusted by your OS/browser)" };
+    const arrows = chain.map((c2, i) => {
+      const icon  = roleIcon[c2.role]  || "📄";
+      const label = roleLabel[c2.role] || c2.role;
+      const arrow = i < chain.length - 1 ? `<div style="color:var(--muted);font-size:10px;padding:2px 0 2px 10px">↑ signed by</div>` : "";
+      return `<div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:3px 0">
+        <span style="font-size:14px">${icon}</span>
+        <span style="font-family:monospace;color:var(--text)">${c2.subject||"N/A"}</span>
+        <span style="color:var(--muted)">${label}</span>
+      </div>${arrow}`;
+    }).reverse().join(""); // root at top, leaf at bottom
+    chainHtml = `
+    <div style="margin-top:10px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px">
+      <div style="font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.1em;margin-bottom:8px">TRUST CHAIN (root → leaf)</div>
+      ${arrows}
+    </div>`;
+  }
+
   return `
   <div class="cert-meta">
     <div class="cert-row"><span class="cert-key">Website</span><span class="cert-val">${c.subject}</span></div>
     <div class="cert-row"><span class="cert-key">Issued by</span><span class="cert-val">${c.issuer}</span></div>
     <div class="cert-row"><span class="cert-key">Expires</span><span class="cert-val" style="color:${col}">${c.not_after} — ${days} days left</span></div>
+    ${chainHtml}
   </div>`;
 }
 
