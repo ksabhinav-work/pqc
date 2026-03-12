@@ -129,14 +129,15 @@
       border-bottom: 3px solid #0a0807;
       border-radius: 5px;
       padding: 0 22px;
-      margin: 0 0 0 8px;
+      margin: 8px 0 0;
       font-family: 'IBM Plex Mono', monospace;
       font-size: 12px; font-weight: 500; cursor: pointer;
       white-space: nowrap; letter-spacing: .05em;
       box-shadow: 0 1px 0 #000, inset 0 1px 0 rgba(255,255,255,.12);
       transition: all .08s;
-      flex-shrink: 0;
       height: 52px;
+      display: block;
+      width: 100%;
     }
     #scan-btn:hover:not(:disabled) {
       background: linear-gradient(180deg, #3a3530 0%, #2a2520 100%);
@@ -396,11 +397,47 @@
 
     /* ── RESPONSIVE ────────────────────────────────────────── */
     @media (max-width: 600px) {
-      h1 { font-size: 28px; }
-      .verdict-card { grid-template-columns: 1fr; }
+      header { padding: 20px 16px 20px; }
+      main   { padding: 20px 16px 60px; }
+
+      /* header: stack SVG above headline on mobile */
+      header > div { flex-direction: column; align-items: flex-start; gap: 12px; }
+      header svg   { width: 80px; height: 116px; }
+
+      h1 { font-size: 26px; }
+      .header-sub { font-size: 13px; margin-top: 8px; }
+
+      /* scan box */
+      .scan-box { padding: 8px 8px 10px; }
+      .scan-row { border-radius: 5px; }
+      .scan-prefix { padding: 0 10px; font-size: 11px; }
+      #domain-input { font-size: 13px; padding: 12px; height: 46px; }
+      #scan-btn { display: block; width: 100%; margin: 6px 0 0; height: 44px; border-radius: 5px; font-size: 13px; border: 1px solid #111; border-bottom: 3px solid #0a0807; }
+
+      .eg-pill { font-size: 9.5px; padding: 4px 8px 5px; }
+
+      /* cards */
+      .verdict-card { grid-template-columns: 1fr; gap: 12px; padding: 16px; }
       .verdict-emoji { font-size: 32px; }
-      .finding-top { grid-template-columns: 1fr; }
-      .detail-grid { grid-template-columns: 1fr; }
+      .verdict-title { font-size: 17px; }
+
+      .section-header { gap: 10px; }
+      .section-numeral { font-size: 22px; width: 22px; }
+      .section-title { font-size: 14px; }
+      .section-desc { font-size: 12px; }
+
+      .finding-top { grid-template-columns: 1fr; gap: 8px; }
+      .status-pill { display: inline-block; }
+      .detail-grid { grid-template-columns: 1fr; gap: 8px; }
+      .detail-label { padding-bottom: 0; }
+
+      .cert-row { grid-template-columns: 80px 1fr; font-size: 11px; }
+
+      .action-card { padding: 14px 16px; }
+      .action-title { font-size: 13px; }
+      .action-body { font-size: 12px; }
+
+      .tl-labels { font-size: 9px; }
     }
   </style>
 </head>
@@ -472,8 +509,8 @@
       <div class="scan-prefix">https://</div>
       <input id="domain-input" type="text" placeholder="youtube.com · ifsca.gov.in · cloudflare.com"
              autocomplete="off" spellcheck="false"/>
-      <button id="scan-btn" onclick="scan()">Inspect →</button>
     </div>
+    <button id="scan-btn" onclick="scan()">Inspect →</button>
     <div class="examples-panel">
       <!-- Regulators -->
       <span class="eg-pill" onclick="pick('ifsca.gov.in')">ifsca.gov.in</span>
