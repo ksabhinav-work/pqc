@@ -251,49 +251,108 @@ def parse_cipher_suite(cipher_name):
     return algos
 
 
-def parse_cert(der_bytes):
+def get_cert_chain(host, port=443, timeout=10):
+    """Fetch full cert chain using pyOpenSSL. Returns [(role, der_bytes), ...]."""
+    try:
+        from OpenSSL import SSL, crypto as ossl_crypto
+        ctx = SSL.Context(SSL.TLS_CLIENT_METHOD)
+        ctx.set_verify(SSL.VERIFY_NONE, lambda *a: True)
+        sock = socket.create_connection((host, port), timeout=timeout)
+        conn = SSL.Connection(ctx, sock)
+        conn.set_tlsext_host_name(host.encode())
+        conn.set_connect_state()
+        conn.do_handshake()
+        chain = conn.get_peer_cert_chain()
+        conn.close(); sock.close()
+        if not chain:
+            return []
+        result = []
+        for i, cert in enumerate(chain):
+            der = ossl_crypto.dump_certificate(ossl_crypto.FILETYPE_ASN1, cert)
+            if i == 0:                    role = "leaf"
+            elif i == len(chain) - 1:     role = "root"
+            else:                         role = "intermediate"
+            result.append((role, der))
+        return result
+    except Exception:
+        try:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
+            with socket.create_connection((host, port), timeout=timeout) as raw:
+                with ctx.wrap_socket(raw, server_hostname=host) as conn:
+                    der = conn.getpeercert(binary_form=True)
+                    return [("leaf", der)] if der else []
+        except Exception:
+            return []
+
+
+def parse_cert(der_bytes, role="leaf"):
+    """
+    Parse one certificate. role = leaf | intermediate | root.
+    leaf:         full analysis + meta dict
+    intermediate: signing key + hash (weakest-link)
+    root:         signing key only (self-signed; hash is less meaningful)
+    """
     if not HAS_CRYPTO:
-        return []
+        return [], {}
     findings = []
     import re as _re
+    ROLE_LABEL = {"leaf":"Leaf certificate","intermediate":"Intermediate CA","root":"Root CA"}
+    label = ROLE_LABEL.get(role, "Certificate")
     try:
-        cert = x509.load_der_x509_certificate(der_bytes)
+        cert    = x509.load_der_x509_certificate(der_bytes)
         sig_oid = cert.signature_algorithm_oid.dotted_string
-        if cert.signature_hash_algorithm:
+        cn_list = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+        cn      = cn_list[0].value if cn_list else "N/A"
+        iss_list= cert.issuer.get_attributes_for_oid(NameOID.COMMON_NAME)
+        issuer  = iss_list[0].value if iss_list else "N/A"
+
+        if role != "root" and cert.signature_hash_algorithm:
             raw = cert.signature_hash_algorithm.name.upper()
             hash_norm = _re.sub(r'SHA(\d)',r'SHA-\1',raw).replace("SHA-3-","SHA3-")
             findings.append({"ftype":"sig_hash","algo":hash_norm,
-                "context":"Certificate signature hash","source":f"OID {sig_oid}"})
+                "context":f"{label} ({cn}) — signature hash algorithm",
+                "source":f"OID {sig_oid}"})
+
         pub = cert.public_key()
         curve_map = {"secp256r1":"P256","secp384r1":"P384","secp521r1":"P521",
                      "secp192r1":"P192","secp224r1":"P224"}
         if isinstance(pub, rsa.RSAPublicKey):
             bits = pub.key_size
-            sig_key = f"RSA-PSS-{bits}" if "1.2.840.113549.1.1.10" in sig_oid else f"RSA-PKCS1-{bits}"
-            findings.append({"ftype":"sig_key","algo":sig_key,
-                "context":f"Certificate signing key ({bits}-bit RSA)","source":"SubjectPublicKeyInfo"})
+            algo = f"RSA-PSS-{bits}" if "1.2.840.113549.1.1.10" in sig_oid else f"RSA-PKCS1-{bits}"
+            findings.append({"ftype":"sig_key","algo":algo,
+                "context":f"{label} ({cn}) — {bits}-bit RSA signing key",
+                "source":"SubjectPublicKeyInfo"})
         elif isinstance(pub, ec.EllipticCurvePublicKey):
             curve = pub.curve.name
             findings.append({"ftype":"sig_key","algo":"ECDSA-"+curve_map.get(curve,curve),
-                "context":f"Certificate signing key ({curve}) — used for server authentication, not session key exchange","source":"SubjectPublicKeyInfo"})
+                "context":f"{label} ({cn}) — {curve} signing key",
+                "source":"SubjectPublicKeyInfo"})
         elif isinstance(pub, ed25519.Ed25519PublicKey):
-            findings.append({"ftype":"sig_key","algo":"Ed25519","context":"Certificate signing key","source":"SubjectPublicKeyInfo"})
+            findings.append({"ftype":"sig_key","algo":"Ed25519",
+                "context":f"{label} ({cn}) — Ed25519 signing key","source":"SubjectPublicKeyInfo"})
         elif isinstance(pub, ed448.Ed448PublicKey):
-            findings.append({"ftype":"sig_key","algo":"Ed448","context":"Certificate signing key","source":"SubjectPublicKeyInfo"})
-        try:
-            ski = cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_KEY_IDENTIFIER)
-            if ski:
-                findings.append({"ftype":"ski_info","algo":"SHA-1",
-                    "context":"Subject Key Identifier (RFC 5280 §4.2.1.2 — identifier only, not security-relevant)",
-                    "source":"X.509 Extension"})
-        except: pass
-        return findings, {
-            "subject":    cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value if cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME) else "N/A",
-            "issuer":     cert.issuer.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value  if cert.issuer.get_attributes_for_oid(NameOID.COMMON_NAME)  else "N/A",
-            "not_before": str(cert.not_valid_before_utc if hasattr(cert,"not_valid_before_utc") else cert.not_valid_before),
-            "not_after":  str(cert.not_valid_after_utc  if hasattr(cert,"not_valid_after_utc")  else cert.not_valid_after),
-        }
-    except Exception as e:
+            findings.append({"ftype":"sig_key","algo":"Ed448",
+                "context":f"{label} ({cn}) — Ed448 signing key","source":"SubjectPublicKeyInfo"})
+
+        if role == "leaf":
+            try:
+                ski = cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_KEY_IDENTIFIER)
+                if ski:
+                    findings.append({"ftype":"ski_info","algo":"SHA-1",
+                        "context":"Subject Key Identifier (RFC 5280 §4.2.1.2 — identifier only, not security-relevant)",
+                        "source":"X.509 Extension"})
+            except: pass
+
+        meta = {}
+        if role == "leaf":
+            meta = {
+                "subject": cn, "issuer": issuer,
+                "not_before": str(cert.not_valid_before_utc if hasattr(cert,"not_valid_before_utc") else cert.not_valid_before),
+                "not_after":  str(cert.not_valid_after_utc  if hasattr(cert,"not_valid_after_utc")  else cert.not_valid_after),
+            }
+        return findings, meta
+    except Exception:
         return [], {}
 
 
@@ -382,16 +441,25 @@ def do_scan(host, port=443):
             findings.append({"algo": algo, "context": ctx_str,
                              "source": f"Cipher suite: {cipher[0]}", **pqc_lookup(algo)})
 
-    # Certificate
-    if der_cert and HAS_CRYPTO:
-        cert_findings, cert_meta = parse_cert(der_bytes=der_cert)
-        meta["certificate"] = cert_meta
-        for f in cert_findings:
-            if f["ftype"] == "ski_info":
-                meta["ski_note"] = f["context"]
-                continue
-            findings.append({"algo": f["algo"], "context": f["context"],
-                             "source": f["source"], **pqc_lookup(f["algo"])})
+    # Certificate chain: leaf + intermediates + root
+    if HAS_CRYPTO:
+        chain = get_cert_chain(host, port)
+        if not chain and der_cert:
+            chain = [("leaf", der_cert)]
+        chain_meta = []
+        for role, der in chain:
+            cert_findings, cert_meta = parse_cert(der_bytes=der, role=role)
+            if role == "leaf" and cert_meta:
+                meta["certificate"] = cert_meta
+            for f in cert_findings:
+                if f["ftype"] == "ski_info":
+                    meta["ski_note"] = f["context"]
+                    continue
+                findings.append({"algo": f["algo"], "context": f["context"],
+                                 "source": f["source"], **pqc_lookup(f["algo"])})
+            if cert_meta:
+                chain_meta.append({"role": role, **cert_meta})
+        meta["cert_chain"] = chain_meta
 
     # HTTP headers
     if HAS_REQUESTS:
