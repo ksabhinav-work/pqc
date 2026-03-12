@@ -209,7 +209,16 @@
       background: #fff;
       box-shadow: 2px 2px 0 var(--paper2);
     }
-    .verdict-emoji { font-size: 44px; line-height: 1; }
+    .verdict-grade {
+      font-family: 'Playfair Display', serif;
+      font-size: 48px; font-weight: 700; line-height: 1;
+      min-width: 64px; text-align: center;
+    }
+    .verdict-phrase {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px; font-weight: 500; letter-spacing: .08em;
+      text-transform: uppercase; margin-bottom: 5px; opacity: .75;
+    }
     .verdict-title {
       font-family: 'Playfair Display', serif;
       font-size: 20px; font-weight: 700; margin-bottom: 5px;
@@ -421,7 +430,7 @@
 
       /* cards */
       .verdict-card { grid-template-columns: 1fr; gap: 12px; padding: 16px; }
-      .verdict-emoji { font-size: 32px; }
+      .verdict-grade { font-size: 36px; min-width: 48px; }
       .verdict-title { font-size: 17px; }
 
       .section-header { gap: 10px; }
@@ -712,26 +721,48 @@ function threatStyle(threat) {
   return map[threat] || map.UNKNOWN;
 }
 
-function verdictFor(score, hndl, imp) {
-  if (score >= 5 && !hndl && !imp)
-    return { emoji:"✅", color:"#14532d", title:"Quantum-Safe",
-      bg:"#f0fdf4", border:"#86efac",
-      plain:"This site uses the latest quantum-safe algorithms. Traffic is protected against both current and future quantum computer attacks." };
-  if (!hndl && score >= 4)
-    return { emoji:"🛡️", color:"#1e3a5f", title:"Mostly Protected",
-      bg:"#eff6ff", border:"#93c5fd",
-      plain:"The connection itself is quantum-safe — traffic recorded today cannot be decrypted by future quantum computers. However, the certificate still uses classical algorithms that could eventually be forged." };
-  if (hndl)
-    return { emoji:"⚠️", color:"#9a3412", title:"Harvest Risk — Upgrade Needed",
-      bg:"#fff7ed", border:"#fdba74",
-      plain:"Encrypted traffic from this site could be recorded today and decrypted in the future when quantum computers arrive. The site needs to upgrade its key exchange to quantum-safe algorithms." };
-  if (score <= 1)
-    return { emoji:"🚨", color:"#9b1c1c", title:"Critical — Highly Vulnerable",
-      bg:"#fef2f2", border:"#fca5a5",
-      plain:"This site uses outdated or deprecated encryption. It is extremely vulnerable to both classical and future quantum attacks." };
-  return { emoji:"⚠️", color:"#92400e", title:"Partial Protection",
-    bg:"#fffbeb", border:"#fcd34d",
-    plain:"Mixed security — some algorithms are acceptable but others need upgrading to be quantum-safe." };
+function verdictFor(score, hndl, imp, findings) {
+  // Detect if leaf cert uses a quantum-safe signature algorithm
+  const PQC_SIG_PREFIXES = ["ML-DSA","SLH-DSA","FN-DSA"];
+  const certPQC = (findings || []).some(f =>
+    f.ftype === "sig_key" && f.context && f.context.includes("Leaf") &&
+    PQC_SIG_PREFIXES.some(p => f.algo && f.algo.startsWith(p))
+  );
+
+  // A+: quantum-safe KEX + quantum-safe cert
+  if (!hndl && certPQC)
+    return { grade:"A+", color:"#14532d", bg:"#f0fdf4", border:"#86efac",
+      phrase:"Quantum-safe, end to end",
+      plain:"Both the key exchange and the certificate use quantum-safe algorithms. This connection is protected against current threats and future quantum computers." };
+
+  // A: quantum-safe KEX, classical cert
+  if (!hndl)
+    return { grade:"A", color:"#1e5f3a", bg:"#f0fdf4", border:"#86efac",
+      phrase:"No harvest risk, impersonation risk remains",
+      plain:"Traffic recorded today cannot be decrypted by future quantum computers. However, the certificate still uses classical algorithms — once quantum computers arrive, an attacker could forge it and impersonate this site." };
+
+  // B: classical KEX, cert decent, nothing broken
+  if (hndl && score >= 3)
+    return { grade:"B", color:"#92400e", bg:"#fffbeb", border:"#fcd34d",
+      phrase:"Harvest risk active, identity safe",
+      plain:"Encrypted traffic from today could be stored and decrypted in the future when quantum computers arrive. The certificate itself is in reasonable shape — identity is not yet at risk." };
+
+  // C: classical KEX, weak cert
+  if (hndl && score >= 1)
+    return { grade:"C", color:"#9a3412", bg:"#fff7ed", border:"#fdba74",
+      phrase:"Harvest risk active, identity at risk",
+      plain:"Encrypted traffic can be harvested now and decrypted later. The certificate also uses weak algorithms, meaning an attacker may eventually be able to forge it and impersonate this site." };
+
+  // D: deprecated but not withdrawn
+  if (score >= 1)
+    return { grade:"D", color:"#7c2d12", bg:"#fef2f2", border:"#fca5a5",
+      phrase:"Weak encryption, multiple vulnerabilities",
+      plain:"This site uses outdated encryption with multiple weaknesses — a full security upgrade is needed, independent of quantum computers." };
+
+  // F: broken / withdrawn
+  return { grade:"F", color:"#9b1c1c", bg:"#fef2f2", border:"#fca5a5",
+    phrase:"Broken — deprecated or withdrawn algorithms",
+    plain:"This site uses encryption algorithms that have been officially withdrawn or are considered broken. Connections are not secure." };
 }
 
 function pick(d) {
@@ -783,15 +814,15 @@ function render(data, domain, port) {
   const chainBreakdown = (meta.cert_chain || []).map(c =>
     `${c.role === "leaf" ? "🌿 Leaf" : c.role === "intermediate" ? "🔗 Intermediate CA" : "🏛 Root CA"}: ${c.subject || "N/A"}`
   ).join("<br>");
-  const v = verdictFor(portfolio_score, hndl_risk, impersonation_risk);
+  const v = verdictFor(portfolio_score, hndl_risk, impersonation_risk, findings);
   let html = "";
 
   // Verdict
   html += `
   <div class="verdict-card fade-up" style="background:${v.bg};border-color:${v.border};border-left-color:${v.color}">
-    <div class="verdict-emoji">${v.emoji}</div>
+    <div class="verdict-grade" style="color:${v.color}">${v.grade}</div>
     <div>
-      <div class="verdict-title" style="color:${v.color}">${v.title}</div>
+      <div class="verdict-phrase" style="color:${v.color}">${v.phrase}</div>
       <div class="verdict-domain">${domain}:${port} · ${meta.tls_version||"?"} · IP: ${meta.ip||"?"}</div>
       <div class="verdict-plain">${v.plain}</div>
     </div>
