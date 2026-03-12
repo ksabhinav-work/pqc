@@ -366,9 +366,10 @@ def get_cert_chain(host, port=443, timeout=10):
         aia_chain = _fetch_aia_intermediates(leaf_der)
         result.extend(aia_chain)
 
-    # Re-label: if only 2 certs and last is not self-signed, it's intermediate not root
+    # Re-label: if top cert is not self-signed, it's an intermediate — also chase its AIA for the root
     if len(result) >= 2:
         relabeled = []
+        top_is_intermediate = False
         for i, (role, der) in enumerate(result):
             if i == 0:
                 relabeled.append(("leaf", der))
@@ -376,12 +377,27 @@ def get_cert_chain(host, port=443, timeout=10):
                 try:
                     c = x509.load_der_x509_certificate(der)
                     is_self = (c.subject == c.issuer)
-                    relabeled.append(("root" if is_self else "intermediate", der))
+                    if is_self:
+                        relabeled.append(("root", der))
+                    else:
+                        relabeled.append(("intermediate", der))
+                        top_is_intermediate = True
+                        top_der = der
                 except Exception:
                     relabeled.append((role, der))
             else:
                 relabeled.append(("intermediate", der))
         result = relabeled
+
+        # Server didn't send the root — chase AIA from the topmost intermediate
+        if top_is_intermediate:
+            extra = _fetch_aia_intermediates(top_der)
+            # Only append certs we haven't seen yet (deduplicate by DER bytes)
+            seen_ders = set(d for _, d in result)
+            for r, d in extra:
+                if d not in seen_ders:
+                    result.append((r, d))
+                    seen_ders.add(d)
 
     return result
 
