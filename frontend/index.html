@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Crypto Scanner · PQC Assessment</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Bebas+Neue&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #07080d;
+      --bg2:      #0a0b14;
+      --bg3:      #0d0e1a;
+      --border:   #131525;
+      --border2:  #1a1d2e;
+      --text:     #c8d0e0;
+      --dim:      #3a4060;
+      --red:      #ff2d55;
+      --orange:   #ff6b35;
+      --yellow:   #ffd60a;
+      --green:    #30d158;
+      --blue:     #0a84ff;
+      --cyan:     #64d2ff;
+      --gray:     #556080;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      min-height: 100vh;
+      background-image:
+        radial-gradient(ellipse 70% 40% at 50% 0%, rgba(10,132,255,0.06) 0%, transparent 60%);
+    }
+
+    /* ── Header ── */
+    header {
+      padding: 28px 32px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .header-inner {
+      max-width: 900px; margin: 0 auto;
+      display: flex; align-items: flex-end; justify-content: space-between;
+      flex-wrap: wrap; gap: 12px; padding-bottom: 20px;
+    }
+    .logo-tag { font-size: 9px; color: var(--blue); letter-spacing: .22em; margin-bottom: 5px; }
+    h1 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 36px; letter-spacing: .06em; color: #e8ecf8; line-height: 1;
+    }
+    h1 span { color: var(--border2); font-size: 24px; }
+    .badge {
+      font-size: 9px; color: var(--dim); border: 1px solid var(--border2);
+      padding: 4px 10px; border-radius: 3px; letter-spacing: .1em;
+    }
+
+    /* ── Main ── */
+    main { max-width: 900px; margin: 0 auto; padding: 28px 32px 60px; }
+
+    /* ── Input card ── */
+    .input-card {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 6px; overflow: hidden; margin-bottom: 24px;
+    }
+    .input-bar {
+      display: flex; align-items: center; gap: 0;
+    }
+    .input-prefix {
+      padding: 0 14px; color: var(--dim); font-size: 13px;
+      border-right: 1px solid var(--border); height: 52px;
+      display: flex; align-items: center;
+    }
+    #domain-input {
+      flex: 1; background: transparent; border: none; outline: none;
+      color: var(--text); font-family: inherit; font-size: 14px;
+      padding: 0 16px; height: 52px;
+    }
+    #domain-input::placeholder { color: var(--border2); }
+    #scan-btn {
+      background: var(--blue); color: #fff; border: none;
+      padding: 0 24px; height: 52px; cursor: pointer;
+      font-family: inherit; font-size: 11px; font-weight: 700;
+      letter-spacing: .12em; transition: background .2s;
+      white-space: nowrap;
+    }
+    #scan-btn:hover:not(:disabled) { background: #3399ff; }
+    #scan-btn:disabled { opacity: .4; cursor: not-allowed; }
+    .examples {
+      padding: 10px 16px; font-size: 10px; color: var(--dim);
+      border-top: 1px solid var(--border);
+      display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+    }
+    .example-link {
+      color: var(--dim); cursor: pointer; text-decoration: underline;
+      text-underline-offset: 2px; transition: color .15s;
+    }
+    .example-link:hover { color: var(--blue); }
+
+    /* ── Score bar ── */
+    #score-section { display: none; margin-bottom: 24px; }
+    .score-card {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 6px; padding: 20px 24px;
+      display: grid; grid-template-columns: auto 1fr auto;
+      gap: 24px; align-items: center;
+    }
+    .score-num {
+      font-family: 'Bebas Neue', sans-serif; font-size: 64px; line-height: 1;
+    }
+    .score-label { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+    .score-sub { font-size: 10px; color: var(--dim); }
+    .score-bars { display: flex; gap: 5px; margin-top: 8px; }
+    .score-bar { width: 22px; height: 6px; border-radius: 2px; }
+    .risk-pills { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+    .risk-pill {
+      font-size: 10px; font-weight: 700; letter-spacing: .08em;
+      padding: 5px 12px; border-radius: 3px; border: 1px solid;
+      white-space: nowrap;
+    }
+
+    /* ── Meta strip ── */
+    .meta-strip {
+      display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px;
+    }
+    .meta-chip {
+      font-size: 10px; padding: 4px 10px; border-radius: 3px;
+      border: 1px solid var(--border2); color: var(--dim);
+    }
+    .meta-chip.highlight { border-color: rgba(10,132,255,.3); color: var(--blue); }
+    .meta-chip.good   { border-color: rgba(48,209,88,.3); color: var(--green); }
+    .meta-chip.warn   { border-color: rgba(255,214,10,.3); color: var(--yellow); }
+
+    /* ── Section heading ── */
+    .section-head {
+      font-size: 9px; color: var(--dim); letter-spacing: .18em;
+      margin-bottom: 8px; padding-left: 2px;
+    }
+
+    /* ── Findings table ── */
+    .findings-group { margin-bottom: 20px; }
+    .findings-table {
+      border: 1px solid var(--border); border-radius: 4px; overflow: hidden;
+    }
+    .finding-row {
+      display: grid; grid-template-columns: 180px 1fr 110px;
+      padding: 11px 14px; gap: 12px; align-items: start;
+      border-top: 1px solid var(--border);
+      transition: background .12s;
+    }
+    .finding-row:first-child { border-top: none; }
+    .finding-row:hover { background: rgba(255,255,255,.02); }
+    .algo-name { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+    .algo-nist { font-size: 9px; color: var(--dim); margin-top: 2px; }
+    .algo-bars { display: flex; gap: 3px; margin: 4px 0 3px; }
+    .algo-bar  { width: 14px; height: 4px; border-radius: 1px; }
+    .rating-label { font-size: 9px; }
+    .ctx-main  { font-size: 11px; color: #6070a0; margin-bottom: 3px; }
+    .ctx-src   { font-size: 10px; color: var(--dim); }
+    .ctx-migrate { font-size: 10px; color: var(--green); margin-top: 5px; }
+    .threat-badge {
+      font-size: 9px; font-weight: 700; letter-spacing: .08em;
+      padding: 3px 8px; border-radius: 2px; border: 1px solid;
+      text-align: center; white-space: nowrap;
+    }
+    .quantum-text { font-size: 9px; color: var(--dim); margin-top: 4px; text-align: right; }
+
+    /* ── Info note (SKI) ── */
+    .info-note {
+      padding: 8px 14px; font-size: 10px; color: var(--dim);
+      border-top: 1px solid var(--border); font-style: italic;
+    }
+
+    /* ── Risk boxes ── */
+    .risk-box {
+      border-radius: 5px; border: 1px solid; padding: 14px 16px;
+      margin-bottom: 12px; font-size: 11px; line-height: 1.7;
+    }
+    .risk-box.hndl   { border-color: rgba(255,107,53,.3); background: rgba(255,107,53,.05); color: #ff9060; }
+    .risk-box.imp    { border-color: rgba(255,214,10,.3);  background: rgba(255,214,10,.05); color: #ffd60a; }
+    .risk-box.safe   { border-color: rgba(48,209,88,.3);   background: rgba(48,209,88,.05);  color: var(--green); }
+    .risk-title { font-size: 10px; font-weight: 700; letter-spacing: .1em; margin-bottom: 6px; }
+
+    /* ── Spinner ── */
+    .spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid var(--blue); border-top-color: transparent;
+      border-radius: 50%; animation: spin .7s linear infinite;
+      vertical-align: middle; margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade-up { animation: fadeUp .35s ease forwards; }
+
+    /* ── Error ── */
+    .error-box {
+      background: rgba(255,45,85,.07); border: 1px solid rgba(255,45,85,.25);
+      border-radius: 5px; padding: 14px 16px; color: var(--red); font-size: 12px;
+    }
+
+    /* ── Status line ── */
+    #status { font-size: 11px; color: var(--dim); margin-bottom: 16px; min-height: 18px; }
+
+    /* Colour helpers */
+    .c-red    { color: var(--red); }
+    .c-orange { color: var(--orange); }
+    .c-yellow { color: var(--yellow); }
+    .c-green  { color: var(--green); }
+    .c-blue   { color: var(--blue); }
+    .c-gray   { color: var(--gray); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div>
+      <div class="logo-tag">◈ POST-QUANTUM CRYPTOGRAPHY</div>
+      <h1>CRYPTO SCANNER <span>/ PQC</span></h1>
+    </div>
+    <div class="badge">LIVE TLS INSPECTION</div>
+  </div>
+</header>
+
+<main>
+
+  <!-- Input -->
+  <div class="input-card">
+    <div class="input-bar">
+      <div class="input-prefix">https://</div>
+      <input id="domain-input" type="text" placeholder="youtube.com  or  api.example.com:8443"
+             autocomplete="off" spellcheck="false"/>
+      <button id="scan-btn" onclick="scan()">▶ SCAN</button>
+    </div>
+    <div class="examples">
+      <span style="color:var(--border2)">Try:</span>
+      <span class="example-link" onclick="setDomain('youtube.com')">youtube.com</span>
+      <span class="example-link" onclick="setDomain('cloudflare.com')">cloudflare.com</span>
+      <span class="example-link" onclick="setDomain('ifsca.gov.in')">ifsca.gov.in</span>
+      <span class="example-link" onclick="setDomain('github.com')">github.com</span>
+      <span class="example-link" onclick="setDomain('api.stripe.com')">api.stripe.com</span>
+    </div>
+  </div>
+
+  <!-- Status -->
+  <div id="status"></div>
+
+  <!-- Score -->
+  <div id="score-section"></div>
+
+  <!-- Results -->
+  <div id="results"></div>
+
+</main>
+
+<script>
+  // ── CONFIG ─────────────────────────────────────────────────────────────────
+  // Replace with your actual Render URL after deployment
+  const API_BASE = "https://crypto-scanner-api.onrender.com";
+
+  // ── Colour maps ────────────────────────────────────────────────────────────
+  const THREAT_COLOR = {
+    CRITICAL:"#ff2d55", HIGH:"#ff6b35", MEDIUM:"#ffd60a",
+    LOW:"#30d158", NONE:"#0a84ff", UNKNOWN:"#556080"
+  };
+  const RATING_COLOR = ["#ff2d55","#ff6b35","#ff6b35","#ffd60a","#30d158","#0a84ff"];
+  const RATING_LABEL = ["Broken","Critical","Insecure","Marginal","Acceptable","PQC Safe"];
+  const THREAT_BG    = {
+    CRITICAL:"rgba(255,45,85,.12)",  HIGH:"rgba(255,107,53,.12)",
+    MEDIUM:"rgba(255,214,10,.12)",   LOW:"rgba(48,209,88,.12)",
+    NONE:"rgba(10,132,255,.12)",     UNKNOWN:"rgba(85,96,128,.12)"
+  };
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function setDomain(d) {
+    document.getElementById("domain-input").value = d;
+    document.getElementById("domain-input").focus();
+  }
+
+  function setStatus(msg, spin=false) {
+    document.getElementById("status").innerHTML =
+      (spin ? `<span class="spinner"></span>` : "") + msg;
+  }
+
+  function threatBadge(threat) {
+    const c = THREAT_COLOR[threat] || "#556080";
+    const bg = THREAT_BG[threat]   || "rgba(85,96,128,.12)";
+    return `<span class="threat-badge" style="color:${c};background:${bg};border-color:${c}40">${threat}</span>`;
+  }
+
+  function ratingBars(rating) {
+    const c = RATING_COLOR[rating];
+    return Array.from({length:6},(_,i) =>
+      `<div class="algo-bar" style="background:${i<=rating?c:'#1a1d2e'}"></div>`
+    ).join("");
+  }
+
+  function scoreColor(s) { return RATING_COLOR[s] || "#556080"; }
+
+  // ── Main scan ──────────────────────────────────────────────────────────────
+  async function scan() {
+    const raw = document.getElementById("domain-input").value.trim();
+    if (!raw) return;
+
+    let domain = raw.replace(/^https?:\/\//,"").split("/")[0];
+    let port = 443;
+    if (domain.includes(":")) {
+      const parts = domain.split(":");
+      domain = parts[0];
+      port   = parseInt(parts[1]) || 443;
+    }
+
+    document.getElementById("scan-btn").disabled = true;
+    document.getElementById("score-section").style.display = "none";
+    document.getElementById("score-section").innerHTML = "";
+    document.getElementById("results").innerHTML = "";
+    setStatus(`Connecting to ${domain}:${port}…`, true);
+
+    try {
+      const url = `${API_BASE}/scan?domain=${encodeURIComponent(domain)}&port=${port}`;
+      const resp = await fetch(url);
+      const data = await resp.json();
+
+      if (data.error) {
+        setStatus("");
+        document.getElementById("results").innerHTML =
+          `<div class="error-box">✕ ${data.error}</div>`;
+        return;
+      }
+
+      setStatus(`Scan complete · ${data.findings.length} algorithms found · ${domain}`);
+      renderResults(data, domain, port);
+
+    } catch(e) {
+      setStatus("");
+      document.getElementById("results").innerHTML =
+        `<div class="error-box">✕ Could not reach the scanner API. Is it deployed? (${e.message})</div>`;
+    } finally {
+      document.getElementById("scan-btn").disabled = false;
+    }
+  }
+
+  function renderResults(data, domain, port) {
+    const { findings, portfolio_score, portfolio_label,
+            hndl_risk, hndl_count, impersonation_risk, impersonation_count, meta } = data;
+
+    // ── Score card ──────────────────────────────────────────────────────────
+    const sc = scoreColor(portfolio_score);
+    const pills = [];
+    if (hndl_risk)
+      pills.push(`<div class="risk-pill" style="color:#ff6b35;border-color:rgba(255,107,53,.4);background:rgba(255,107,53,.08)">⚠ HNDL RISK</div>`);
+    if (impersonation_risk)
+      pills.push(`<div class="risk-pill" style="color:#ffd60a;border-color:rgba(255,214,10,.4);background:rgba(255,214,10,.08)">⚠ IMPERSONATION RISK</div>`);
+    if (!hndl_risk && !impersonation_risk)
+      pills.push(`<div class="risk-pill" style="color:#30d158;border-color:rgba(48,209,88,.4);background:rgba(48,209,88,.08)">✓ LOW QUANTUM RISK</div>`);
+
+    const scoreHtml = `
+    <div class="score-card fade-up">
+      <div>
+        <div class="score-num" style="color:${sc}">${portfolio_score}<span style="color:#1a1d2e;font-size:32px">/5</span></div>
+      </div>
+      <div>
+        <div class="score-label" style="color:${sc}">${portfolio_label}</div>
+        <div class="score-sub">${domain}:${port} · ${meta.tls_version || "?"} · ${findings.length} algorithms</div>
+        <div class="score-bars">${ratingBars(portfolio_score)}</div>
+        ${meta.ip ? `<div class="score-sub" style="margin-top:6px">IP: ${meta.ip}${meta.certificate ? ` · Cert: ${meta.certificate.subject} (${meta.certificate.issuer})` : ''}</div>` : ''}
+      </div>
+      <div class="risk-pills">${pills.join("")}</div>
+    </div>`;
+
+    document.getElementById("score-section").style.display = "block";
+    document.getElementById("score-section").innerHTML = scoreHtml;
+
+    // ── Meta chips ──────────────────────────────────────────────────────────
+    const chips = [];
+    if (meta.tls_version) chips.push(`<div class="meta-chip highlight">${meta.tls_version}</div>`);
+    if (meta.cipher_suite) chips.push(`<div class="meta-chip">${meta.cipher_suite}</div>`);
+    if (meta.kex_group) chips.push(`<div class="meta-chip good">KEX: ${meta.kex_group}</div>`);
+    if (meta.hsts)      chips.push(`<div class="meta-chip good">HSTS ✓</div>`);
+    else                chips.push(`<div class="meta-chip warn">HSTS ✗</div>`);
+    if (meta.server)    chips.push(`<div class="meta-chip">Server: ${meta.server}</div>`);
+    if (meta.kex_probe) chips.push(`<div class="meta-chip warn">No TLS 1.3 key exchange</div>`);
+    if (meta.cert_warning) chips.push(`<div class="meta-chip warn">Cert verify failed</div>`);
+
+    // ── Group findings by category ──────────────────────────────────────────
+    const groups = {};
+    for (const f of findings) {
+      const cat = f.category || "Unknown";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(f);
+    }
+
+    const catOrder = ["Protocol","Key Exchange","Symmetric","Hash","Signature","MAC/KDF","Unknown"];
+    let findingsHtml = `<div class="meta-strip">${chips.join("")}</div>`;
+
+    for (const cat of catOrder) {
+      const items = groups[cat];
+      if (!items) continue;
+      findingsHtml += `
+      <div class="findings-group fade-up">
+        <div class="section-head">── ${cat.toUpperCase()}</div>
+        <div class="findings-table">
+          ${items.map(f => {
+            const tc = THREAT_COLOR[f.threat] || "#556080";
+            const migrate = f.migrate && f.migrate !== "Current standard"
+              ? `<div class="ctx-migrate">→ migrate: ${f.migrate}</div>` : "";
+            return `
+            <div class="finding-row">
+              <div>
+                <div class="algo-name" style="color:${tc}">${f.algo}</div>
+                <div class="algo-bars">${ratingBars(f.rating)}</div>
+                <div class="rating-label" style="color:${tc}">${RATING_LABEL[f.rating]}</div>
+                <div class="algo-nist">${f.nist || ""}</div>
+              </div>
+              <div>
+                <div class="ctx-main">${f.context}</div>
+                <div class="ctx-src">${f.source}</div>
+                ${migrate}
+              </div>
+              <div style="text-align:right">
+                ${threatBadge(f.threat)}
+                <div class="quantum-text">${f.quantum || ""}</div>
+              </div>
+            </div>`;
+          }).join("")}
+        </div>
+      </div>`;
+    }
+
+    // ── Risk explanations ───────────────────────────────────────────────────
+    let riskHtml = `<div class="section-head" style="margin-top:8px">── RISK ASSESSMENT</div>`;
+    if (hndl_risk) {
+      riskHtml += `
+      <div class="risk-box hndl fade-up">
+        <div class="risk-title">⚠ HARVEST-NOW-DECRYPT-LATER (HNDL) RISK — ${hndl_count} key exchange algorithm(s)</div>
+        Adversaries can record encrypted TLS sessions <em>today</em> and decrypt them retroactively once a
+        cryptographically-relevant quantum computer (CRQC) becomes available (~2030 estimate).
+        Past traffic <strong>cannot be protected retroactively</strong> — migration must happen before CRQCs arrive.
+        Priority: upgrade key exchange to <strong>X25519+ML-KEM-768</strong> via TLS 1.3.
+      </div>`;
+    }
+    if (impersonation_risk) {
+      riskHtml += `
+      <div class="risk-box imp fade-up">
+        <div class="risk-title">⚠ FUTURE IMPERSONATION RISK (not HNDL) — ${impersonation_count} certificate signature(s)</div>
+        Breaking certificate signatures requires an active CRQC <em>at the time of the attack</em> — it
+        cannot retroactively expose past sessions. Migrate before CRQCs arrive to prevent future
+        man-in-the-middle attacks. Target: <strong>ML-DSA-65 (FIPS 204)</strong>.
+      </div>`;
+    }
+    if (!hndl_risk && !impersonation_risk) {
+      riskHtml += `
+      <div class="risk-box safe fade-up">
+        <div class="risk-title">✓ LOW QUANTUM RISK</div>
+        No high-priority quantum vulnerabilities detected in key exchange or certificate signatures.
+        Continue monitoring NIST PQC standards for emerging guidance.
+      </div>`;
+    }
+
+    document.getElementById("results").innerHTML = findingsHtml + riskHtml;
+  }
+
+  // Enter key
+  document.getElementById("domain-input").addEventListener("keydown", e => {
+    if (e.key === "Enter") scan();
+  });
+</script>
+</body>
+</html>
