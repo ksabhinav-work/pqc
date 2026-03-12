@@ -73,13 +73,18 @@
     }
     #scan-btn:hover:not(:disabled) { background: #5b9cf8; }
     #scan-btn:disabled { opacity: .4; cursor: not-allowed; }
-    .try-links {
-      padding: 9px 16px; font-size: 11px; color: var(--muted);
-      display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+    .examples-panel {
       border-top: 1px solid var(--border);
+      padding: 10px 14px 12px;
+      display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
     }
-    .try-link { color: var(--muted); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
-    .try-link:hover { color: var(--blue); }
+    .eg-pill {
+      font-size: 11px; padding: 3px 10px; border-radius: 20px;
+      border: 1px solid var(--border2); color: #6070a0;
+      cursor: pointer; transition: all .15s; background: transparent;
+      font-family: "JetBrains Mono", monospace; white-space: nowrap;
+    }
+    .eg-pill:hover { border-color: var(--blue); color: var(--blue); }
 
     #status { font-size: 12px; color: var(--muted); min-height: 20px; margin-bottom: 20px; }
     .spinner {
@@ -217,13 +222,48 @@
              autocomplete="off" spellcheck="false"/>
       <button id="scan-btn" onclick="scan()">Check →</button>
     </div>
-    <div class="try-links">
-      <span>Try:</span>
-      <span class="try-link" onclick="setDomain('youtube.com')">youtube.com</span>
-      <span class="try-link" onclick="setDomain('cloudflare.com')">cloudflare.com</span>
-      <span class="try-link" onclick="setDomain('ifsca.gov.in')">ifsca.gov.in</span>
-      <span class="try-link" onclick="setDomain('github.com')">github.com</span>
-      <span class="try-link" onclick="setDomain('stripe.com')">stripe.com</span>
+    <div class="examples-panel">
+      <span class="eg-pill" onclick="pick('ifsca.gov.in')">ifsca.gov.in</span>
+      <span class="eg-pill" onclick="pick('sebi.gov.in')">sebi.gov.in</span>
+      <span class="eg-pill" onclick="pick('rbi.org.in')">rbi.org.in</span>
+      <span class="eg-pill" onclick="pick('irdai.gov.in')">irdai.gov.in</span>
+      <span class="eg-pill" onclick="pick('pfrda.org.in')">pfrda.org.in</span>
+      <span class="eg-pill" onclick="pick('indiainx.com')">indiainx.com</span>
+      <span class="eg-pill" onclick="pick('nseix.com')">nseix.com</span>
+      <span class="eg-pill" onclick="pick('bseindia.com')">bseindia.com</span>
+      <span class="eg-pill" onclick="pick('nseindia.com')">nseindia.com</span>
+      <span class="eg-pill" onclick="pick('mcxindia.com')">mcxindia.com</span>
+      <span class="eg-pill" onclick="pick('nsdl.co.in')">nsdl.co.in</span>
+      <span class="eg-pill" onclick="pick('cdslindia.com')">cdslindia.com</span>
+      <span class="eg-pill" onclick="pick('nseclearing.in')">nseclearing.in</span>
+      <span class="eg-pill" onclick="pick('nseicc.com')">nseicc.com</span>
+      <span class="eg-pill" onclick="pick('sbi.bank.in')">sbi.bank.in</span>
+      <span class="eg-pill" onclick="pick('hdfcbank.bank.in')">hdfcbank.bank.in</span>
+      <span class="eg-pill" onclick="pick('icicibank.bank.in')">icicibank.bank.in</span>
+      <span class="eg-pill" onclick="pick('axisbank.bank.in')">axisbank.bank.in</span>
+      <span class="eg-pill" onclick="pick('kotakbank.bank.in')">kotakbank.bank.in</span>
+      <span class="eg-pill" onclick="pick('pnb.bank.in')">pnb.bank.in</span>
+      <span class="eg-pill" onclick="pick('canarabank.bank.in')">canarabank.bank.in</span>
+      <span class="eg-pill" onclick="pick('bankofindia.bank.in')">bankofindia.bank.in</span>
+      <span class="eg-pill" onclick="pick('bankofbaroda.bank.in')">bankofbaroda.bank.in</span>
+      <span class="eg-pill" onclick="pick('licindia.in')">licindia.in</span>
+      <span class="eg-pill" onclick="pick('hdfclife.com')">hdfclife.com</span>
+      <span class="eg-pill" onclick="pick('iciciprulife.com')">iciciprulife.com</span>
+      <span class="eg-pill" onclick="pick('newindia.co.in')">newindia.co.in</span>
+      <span class="eg-pill" onclick="pick('gicofindia.com')">gicofindia.com</span>
+      <span class="eg-pill" onclick="pick('zerodha.com')">zerodha.com</span>
+      <span class="eg-pill" onclick="pick('groww.in')">groww.in</span>
+      <span class="eg-pill" onclick="pick('angelone.in')">angelone.in</span>
+      <span class="eg-pill" onclick="pick('icicidirect.com')">icicidirect.com</span>
+      <span class="eg-pill" onclick="pick('motilaloswal.com')">motilaloswal.com</span>
+      <span class="eg-pill" onclick="pick('hdfcfund.com')">hdfcfund.com</span>
+      <span class="eg-pill" onclick="pick('sbimf.com')">sbimf.com</span>
+      <span class="eg-pill" onclick="pick('amfiindia.com')">amfiindia.com</span>
+      <span class="eg-pill" onclick="pick('cloudflare.com')">cloudflare.com</span>
+      <span class="eg-pill" onclick="pick('youtube.com')">youtube.com</span>
+      <span class="eg-pill" onclick="pick('swift.com')">swift.com</span>
+      <span class="eg-pill" onclick="pick('bis.org')">bis.org</span>
+      <span class="eg-pill" onclick="pick('imf.org')">imf.org</span>
     </div>
   </div>
 
@@ -358,6 +398,17 @@ function verdictFor(score, hndl, imp) {
 }
 
 function setDomain(d) { document.getElementById("domain-input").value = d; }
+
+function pick(d) {
+  document.getElementById("domain-input").value = d;
+  // close the examples panel
+  const body = document.getElementById("examples-body");
+  const btn  = document.querySelector(".examples-toggle");
+  if (body) body.classList.remove("open");
+  if (btn)  btn.querySelector(".arr").textContent = "▶";
+  document.getElementById("domain-input").focus();
+}
+
 function setStatus(msg, spin=false) {
   document.getElementById("status").innerHTML = (spin ? `<span class="spinner"></span>` : "") + msg;
 }
