@@ -1422,15 +1422,21 @@ function showTip(el) {
 
   const r = el.getBoundingClientRect();
   const bw = 264;
-  let left = r.left + window.scrollX;
-  let top  = r.bottom + window.scrollY + 8;
+  let left = r.left;
+  let top  = r.bottom + 10;
 
   // flip if near right edge
   if (left + bw > window.innerWidth - 12) left = window.innerWidth - bw - 12;
+  if (left < 8) left = 8;
   // flip up if near bottom
-  const flipUp = (r.bottom + 160 > window.innerHeight);
+  const flipUp = (r.bottom + 170 > window.innerHeight);
   if (flipUp) {
-    top = r.top + window.scrollY - bubble.offsetHeight - 14;
+    bubble.style.visibility = 'hidden';
+    bubble.classList.add('visible');
+    const bh = bubble.offsetHeight;
+    bubble.classList.remove('visible');
+    bubble.style.visibility = '';
+    top = r.top - bh - 10;
     bubble.classList.add('flip-up');
   } else {
     bubble.classList.remove('flip-up');
