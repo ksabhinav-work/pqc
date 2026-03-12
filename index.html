@@ -1394,6 +1394,20 @@ const TIPS = {
   "ML-DSA": "<strong>ML-DSA</strong> (Module Lattice Digital Signature) — The new NIST-approved quantum-safe signature standard (FIPS 204). Replaces ECDSA and RSA signatures.",
   "X25519": "<strong>X25519</strong> — A fast, modern elliptic curve key exchange. Widely used, but still vulnerable to Shor’s algorithm.",
   "HSTS":   "<strong>HSTS</strong> (HTTP Strict Transport Security) — Tells browsers to always use HTTPS, never plain HTTP. Prevents certain downgrade attacks.",
+
+  "Recommended":      "<strong>Recommended</strong> — The current best practice. This is what you want to see.",
+  "Legacy":           "<strong>Legacy</strong> — Old but still in use. Not banned, but should be replaced when possible.",
+  "Deprecated 2021":  "<strong>Deprecated in 2021</strong> — Officially retired by the IETF in 2021. Servers should no longer accept this.",
+  "Deprecated 2022":  "<strong>Deprecated in 2022</strong> — Officially retired in 2022. Should not be in active use.",
+  "Deprecated 2023":  "<strong>Deprecated in 2023</strong> — Officially retired in 2023. Should not be in active use.",
+  "Mode Insecure":    "<strong>Mode Insecure</strong> — The key size is fine but the mode of operation (ECB) is broken. It encrypts identical blocks identically, leaking patterns in the data.",
+  "FIPS 180-4":       "<strong>FIPS 180-4</strong> — The US government standard for SHA hash functions (SHA-256, SHA-384, SHA-512). A long-standing, trusted standard.",
+  "FIPS 202":         "<strong>FIPS 202</strong> — The US government standard for SHA-3 hash functions. A more modern design than SHA-2, also trusted.",
+  "RFC 3713":         "<strong>RFC 3713</strong> — The internet standard for Camellia encryption, a Japanese cipher. Technically sound but not widely deployed in the West.",
+  "RFC 6209":         "<strong>RFC 6209</strong> — The internet standard for ARIA encryption, the Korean national cipher. Technically sound but rarely seen outside Korea.",
+  "GB/T 32905":       "<strong>GB/T 32905</strong> — The Chinese national standard for SM3, a hash function. Mandatory in China; quantum-safe for now but uses 256-bit output.",
+  "GB/T 32907":       "<strong>GB/T 32907</strong> — The Chinese national standard for SM4, a symmetric cipher. Uses 128-bit keys — weakened but not broken by Grover’s algorithm.",
+  "GB/T 32918":       "<strong>GB/T 32918</strong> — The Chinese national standard for SM2, an elliptic curve algorithm. Vulnerable to Shor’s algorithm on a quantum computer, like ECDSA.",
   "HNDL":   "<strong>Harvest Now, Decrypt Later</strong> — An attack where someone records your encrypted traffic today and waits until quantum computers can decrypt it.",
 };
 
