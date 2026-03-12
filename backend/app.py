@@ -251,8 +251,71 @@ def parse_cipher_suite(cipher_name):
     return algos
 
 
+def _fetch_aia_intermediates(leaf_der, seen_urls=None, depth=0):
+    """
+    Walk the AIA caIssuers chain: fetch intermediate certs referenced in the
+    leaf (and each intermediate) until we reach a self-signed root or depth limit.
+    Returns [(role, der_bytes), ...] NOT including the leaf itself.
+    """
+    if depth > 4 or not HAS_CRYPTO:
+        return []
+    if seen_urls is None:
+        seen_urls = set()
+    try:
+        from cryptography.x509 import (
+            AuthorityInformationAccess, ExtensionNotFound
+        )
+        from cryptography.x509.oid import AuthorityInformationAccessOID
+        cert = x509.load_der_x509_certificate(leaf_der)
+        try:
+            aia = cert.extensions.get_extension_for_class(AuthorityInformationAccess)
+            urls = [
+                desc.access_location.value
+                for desc in aia.value
+                if desc.access_method == AuthorityInformationAccessOID.CA_ISSUERS
+            ]
+        except ExtensionNotFound:
+            return []
+
+        results = []
+        for url in urls:
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            try:
+                import urllib.request
+                with urllib.request.urlopen(url, timeout=5) as resp:
+                    raw = resp.read()
+                # Could be DER or PEM
+                if raw.strip().startswith(b"-----"):
+                    import base64
+                    b64 = b"".join(raw.split(b"\n")[1:-2])
+                    der = base64.b64decode(b64)
+                else:
+                    der = raw
+                # Check if self-signed (root)
+                iss_cert = x509.load_der_x509_certificate(der)
+                is_root = (iss_cert.subject == iss_cert.issuer)
+                role = "root" if is_root else "intermediate"
+                results.append((role, der))
+                if not is_root:
+                    results.extend(_fetch_aia_intermediates(der, seen_urls, depth+1))
+            except Exception:
+                continue
+        return results
+    except Exception:
+        return []
+
+
 def get_cert_chain(host, port=443, timeout=10):
-    """Fetch full cert chain using pyOpenSSL. Returns [(role, der_bytes), ...]."""
+    """
+    Fetch the full cert chain: leaf from TLS handshake, then walk AIA to get
+    intermediates and root. Returns [(role, der_bytes), ...] leaf first.
+    """
+    leaf_der = None
+    handshake_chain = []  # what the server voluntarily sent
+
+    # Try pyOpenSSL first — gets whatever the server sent
     try:
         from OpenSSL import SSL, crypto as ossl_crypto
         ctx = SSL.Context(SSL.TLS_CLIENT_METHOD)
@@ -264,26 +327,41 @@ def get_cert_chain(host, port=443, timeout=10):
         conn.do_handshake()
         chain = conn.get_peer_cert_chain()
         conn.close(); sock.close()
-        if not chain:
-            return []
-        result = []
-        for i, cert in enumerate(chain):
+        for i, cert in enumerate(chain or []):
             der = ossl_crypto.dump_certificate(ossl_crypto.FILETYPE_ASN1, cert)
-            if i == 0:                    role = "leaf"
-            elif i == len(chain) - 1:     role = "root"
-            else:                         role = "intermediate"
-            result.append((role, der))
-        return result
+            if i == 0:
+                leaf_der = der
+            handshake_chain.append(der)
     except Exception:
+        pass
+
+    # Fallback: stdlib for leaf only
+    if not leaf_der:
         try:
             ctx = ssl.create_default_context()
             ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
             with socket.create_connection((host, port), timeout=timeout) as raw:
                 with ctx.wrap_socket(raw, server_hostname=host) as conn:
-                    der = conn.getpeercert(binary_form=True)
-                    return [("leaf", der)] if der else []
+                    leaf_der = conn.getpeercert(binary_form=True)
         except Exception:
             return []
+
+    if not leaf_der:
+        return []
+
+    result = [("leaf", leaf_der)]
+
+    # If server sent full chain, use it (minus the leaf we already have)
+    if len(handshake_chain) > 1:
+        for i, der in enumerate(handshake_chain[1:], 1):
+            role = "root" if i == len(handshake_chain) - 1 else "intermediate"
+            result.append((role, der))
+    else:
+        # Server sent leaf only — chase AIA to build the chain ourselves
+        aia_chain = _fetch_aia_intermediates(leaf_der)
+        result.extend(aia_chain)
+
+    return result
 
 
 def parse_cert(der_bytes, role="leaf"):
