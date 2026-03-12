@@ -880,7 +880,7 @@ function render(data, domain, port) {
           impersonation_count, meta } = data;
   const chainDepth = meta.cert_chain_depth || 1;
   const chainBreakdown = (meta.cert_chain || []).map(c =>
-    `${c.role === "leaf" ? "🌿 <span class="jargon" data-tip="Leaf certificate">Leaf certificate</span>" : c.role === "intermediate" ? "🔗 <span class="jargon" data-tip="Intermediate CA">Intermediate CA</span>" : "🏛 <span class="jargon" data-tip="Root CA">Root CA</span>"}: ${c.subject || "N/A"}`
+    `${c.role === 'leaf' ? "🌿 <span class='jargon' data-tip='Leaf certificate'>Leaf certificate</span>" : c.role === 'intermediate' ? "🔗 <span class='jargon' data-tip='Intermediate CA'>Intermediate CA</span>" : "🏛 <span class='jargon' data-tip='Root CA'>Root CA</span>"}: ${c.subject || 'N/A'}`
   ).join("<br>");
   const v = verdictFor(portfolio_score, hndl_risk, impersonation_risk, findings);
   let html = "";
