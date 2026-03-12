@@ -474,6 +474,51 @@
 
       .tl-labels { font-size: 9px; }
     }
+
+    /* ── TOOLTIPS ──────────────────────────────────────────── */
+    .jargon {
+      border-bottom: 1px dashed var(--muted);
+      cursor: help;
+      position: relative;
+      white-space: nowrap;
+    }
+    #tooltip-bubble {
+      position: fixed;
+      z-index: 9999;
+      max-width: 260px;
+      background: var(--ink);
+      color: var(--paper);
+      font-family: 'Source Serif 4', serif;
+      font-size: 12.5px;
+      font-weight: 300;
+      line-height: 1.65;
+      padding: 10px 14px;
+      border-radius: 3px;
+      box-shadow: 3px 4px 0 rgba(0,0,0,.25);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .15s ease;
+    }
+    #tooltip-bubble.visible { opacity: 1; }
+    #tooltip-bubble strong { font-weight: 600; color: #e8d9c0; }
+    #tooltip-bubble::after {
+      content: '';
+      position: absolute;
+      bottom: -6px; left: 18px;
+      border: 6px solid transparent;
+      border-bottom: none;
+      border-top-color: var(--ink);
+    }
+    #tooltip-bubble.flip-up::after { display: none; }
+    #tooltip-bubble.flip-up::before {
+      content: '';
+      position: absolute;
+      top: -6px; left: 18px;
+      border: 6px solid transparent;
+      border-top: none;
+      border-bottom-color: var(--ink);
+    }
+
   </style>
 </head>
 <body>
@@ -531,7 +576,7 @@
     <div>
       <h1>Can a quantum computer<br><em>break this website?</em></h1>
       <p class="header-sub">
-        This tool performs a live TLS handshake with a website and inspects the cryptographic
+        This tool performs a live <span class="jargon" data-tip="TLS handshake">TLS handshake</span> with a website and inspects the cryptographic
         algorithms your browser would use to connect to it — the key exchange, the certificate
         chain, and the cipher. It then explores how vulnerable that connection would be
         in a world with quantum computers.
@@ -835,7 +880,7 @@ function render(data, domain, port) {
           impersonation_count, meta } = data;
   const chainDepth = meta.cert_chain_depth || 1;
   const chainBreakdown = (meta.cert_chain || []).map(c =>
-    `${c.role === "leaf" ? "🌿 Leaf" : c.role === "intermediate" ? "🔗 Intermediate CA" : "🏛 Root CA"}: ${c.subject || "N/A"}`
+    `${c.role === "leaf" ? "🌿 <span class="jargon" data-tip="Leaf certificate">Leaf certificate</span>" : c.role === "intermediate" ? "🔗 <span class="jargon" data-tip="Intermediate CA">Intermediate CA</span>" : "🏛 <span class="jargon" data-tip="Root CA">Root CA</span>"}: ${c.subject || "N/A"}`
   ).join("<br>");
   const v = verdictFor(portfolio_score, hndl_risk, impersonation_risk, findings);
   let html = "";
@@ -846,7 +891,7 @@ function render(data, domain, port) {
     <div class="verdict-grade" style="color:${v.color}">${v.grade}</div>
     <div>
       <div class="verdict-phrase" style="color:${v.color}">${v.phrase}</div>
-      <div class="verdict-domain">${domain}:${port} · ${meta.tls_version||"?"} · IP: ${meta.ip||"?"}</div>
+      <div class="verdict-domain">${domain}:${port} · <span class="jargon" data-tip="${meta.tls_version||'TLS 1.2'}">${meta.tls_version||"?"}</span> · IP: ${meta.ip||"?"}</div>
       <div class="verdict-plain">${v.plain}</div>
     </div>
   </div>`;
@@ -1133,7 +1178,7 @@ function render(data, domain, port) {
       </div>
       <div class="cert-meta">
         <div class="cert-row">
-          <span class="cert-key">HSTS</span>
+          <span class="cert-key jargon" data-tip="HSTS">HSTS</span>
           <span class="cert-val" style="color:${meta.hsts?'#14532d':'#9a3412'}">
             ${meta.hsts ? "✓ Enabled — browsers forced to always use HTTPS" : "✗ Not set — browsers may connect over unencrypted HTTP"}
           </span>
@@ -1241,7 +1286,7 @@ function findingCard(f, chain) {
       </div>
       <div style="text-align:right">
         <div class="status-pill" style="color:${s.color};background:${s.bg};border-color:${s.border}">${s.emoji} ${s.label}</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:5px;font-family:'IBM Plex Mono',monospace">${f.nist||""}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:5px;font-family:'IBM Plex Mono',monospace">${f.nist ? `<span class="jargon" data-tip="${f.nist}">${f.nist}</span>` : ""}</div>
       </div>
     </div>
     ${hasDetails ? `
@@ -1250,12 +1295,12 @@ function findingCard(f, chain) {
     </button>
     <div class="finding-details" id="${id}">
       <div class="detail-grid">
-        ${howQ     ? `<div class="detail-label">Quantum attack</div><div class="detail-value">${howQ}</div>` : ""}
+        ${howQ     ? `<div class="detail-label"><span class="jargon" data-tip="Quantum attack">How quantum computers attack this</span></div><div class="detail-value">${howQ}</div>` : ""}
         ${whatToDo ? `<div class="detail-label">What to do</div><div class="detail-value ${f.threat==='NONE'||f.threat==='LOW'?'good':'warn'}">${whatToDo}</div>` : ""}
-        <div class="detail-label">Attack type</div>
-        <div class="detail-value">${f.quantum||"N/A"}</div>
-        <div class="detail-label">NIST status</div>
-        <div class="detail-value code">${f.nist||"N/A"}</div>
+        <div class="detail-label"><span class="jargon" data-tip="Attack type">Attack type</span></div>
+        <div class="detail-value">${f.quantum ? `<span class="jargon" data-tip="${f.quantum}">${f.quantum}</span>` : "N/A"}</div>
+        <div class="detail-label"><span class="jargon" data-tip="NIST status">NIST status</span></div>
+        <div class="detail-value code">${f.nist ? `<span class="jargon" data-tip="${f.nist}">${f.nist}</span>` : "N/A"}</div>
       </div>
     </div>` : ""}
   </div>`;
@@ -1318,5 +1363,101 @@ function toggleDetail(id, btn) {
 
 document.getElementById("domain-input").addEventListener("keydown", e => { if (e.key==="Enter") scan(); });
 </script>
+
+<div id="tooltip-bubble"></div>
+<script>
+const TIPS = {
+  // Status values
+  "Legacy Only":    "<strong>Legacy Only</strong> — Still works, but officially past its recommended lifespan. Think of it like a car that passes inspection but shouldn't be on the road much longer.",
+  "Conditional":    "<strong>Conditional</strong> — Acceptable only under strict conditions, like using TLS 1.2 with specific cipher settings. A stepping stone, not a destination.",
+  "Deprecated":     "<strong>Deprecated</strong> — Officially retired by standards bodies. Servers should no longer offer or accept this.",
+  "Withdrawn":      "<strong>Withdrawn</strong> — Banned. Known to be broken or dangerously weak. No legitimate server should use this.",
+  "Pre-FIPS draft": "<strong>Pre-FIPS draft</strong> — An early version of what later became a final standard. Quantum-resistant in practice, but not the approved form.",
+  "Approved":       "<strong>Approved</strong> — Meets current government standards. Not yet quantum-safe at this key size, but acceptable for now.",
+
+  // Attack types
+  "Shor's":         "<strong>Shor's algorithm</strong> — A quantum algorithm that can efficiently solve the maths that RSA and elliptic curve encryption are built on. A large enough quantum computer running Shor's could break these in hours.",
+  "Grover's":       "<strong>Grover's algorithm</strong> — A quantum algorithm that speeds up brute-force attacks. It effectively halves the security of symmetric keys — so a 128-bit key behaves like a 64-bit key. A 256-bit key still has enough headroom.",
+  "Resistant":      "<strong>Quantum-resistant</strong> — Built on maths problems that quantum computers cannot efficiently solve, even with Shor's or Grover's algorithms.",
+  "Classical KEX":  "<strong>Classical key exchange</strong> — The key exchange part uses pre-quantum algorithms. TLS 1.3 itself is a good protocol, but the key exchange inside it may still need upgrading.",
+  "Depends":        "<strong>Depends on configuration</strong> — TLS 1.2 can be safe or unsafe depending on the cipher suites and settings the server uses. The details matter.",
+  "N/A":            "<strong>N/A</strong> — Not applicable. This protocol is broken for reasons unrelated to quantum computers.",
+
+  // Field labels
+  "NIST status":    "<strong>NIST</strong> is the US National Institute of Standards and Technology — the body that approves cryptographic standards worldwide. Their status labels indicate whether an algorithm is current, outdated, or banned.",
+  "Attack type":    "<strong>Attack type</strong> — Which quantum algorithm could threaten this. Shor's breaks public-key crypto; Grover's weakens symmetric crypto.",
+  "Quantum attack": "<strong>Quantum attack</strong> — How a future quantum computer would attack this algorithm specifically.",
+
+  // Protocol labels
+  "TLS 1.2":        "<strong>TLS 1.2</strong> (Transport Layer Security) — The security protocol that encrypts web traffic. Version 1.2 is still widely used but has known weaknesses depending on how it's configured.",
+  "TLS 1.3":        "<strong>TLS 1.3</strong> — The current recommended version of the web encryption protocol. Faster and more secure than 1.2, with fewer configuration pitfalls.",
+  "TLS 1.0":        "<strong>TLS 1.0</strong> — Officially retired in 2021. Should not be offered by any server.",
+  "TLS 1.1":        "<strong>TLS 1.1</strong> — Officially retired in 2021. Should not be offered by any server.",
+  "TLS handshake":  "<strong>TLS handshake</strong> — The brief negotiation that happens before any data is sent. Your browser and the server agree on which algorithms to use and exchange encryption keys.",
+
+  // Cert chain
+  "Leaf certificate":     "<strong>Leaf certificate</strong> — The certificate belonging to this specific website. It's what your browser checks to confirm you're on the right site.",
+  "Intermediate CA":      "<strong>Intermediate CA</strong> — A middleman certificate authority that sits between the root and the website certificate. It vouches for the leaf certificate.",
+  "Root CA":              "<strong>Root CA</strong> (Certificate Authority) — A highly trusted organisation whose certificate is pre-installed in your browser or operating system. Ultimately vouches for the whole chain.",
+
+  // Algorithm names
+  "ECDSA":          "<strong>ECDSA</strong> (Elliptic Curve Digital Signature Algorithm) — The most common way websites sign their certificates today. Uses elliptic curve maths, which Shor's algorithm can break.",
+  "RSA":            "<strong>RSA</strong> — The classic public-key algorithm, named after its inventors. Relies on the difficulty of factoring large numbers — which quantum computers can do efficiently.",
+  "ML-KEM":         "<strong>ML-KEM</strong> (Module Lattice Key Encapsulation Mechanism) — The new NIST-approved quantum-safe key exchange standard (FIPS 203). Built on lattice maths, which quantum computers cannot efficiently solve.",
+  "ML-DSA":         "<strong>ML-DSA</strong> (Module Lattice Digital Signature Algorithm) — The new NIST-approved quantum-safe signature standard (FIPS 204). Replaces ECDSA and RSA signatures.",
+  "X25519":         "<strong>X25519</strong> — A modern elliptic curve key exchange algorithm. Fast and widely used, but still vulnerable to Shor's algorithm on a quantum computer.",
+  "HSTS":           "<strong>HSTS</strong> (HTTP Strict Transport Security) — A browser instruction that says: always use HTTPS for this site, never plain HTTP. Prevents certain downgrade attacks.",
+  "HNDL":           "<strong>Harvest Now, Decrypt Later</strong> — An attack where someone records your encrypted traffic today, stores it, and waits until quantum computers are powerful enough to decrypt it.",
+};
+
+const bubble = document.getElementById('tooltip-bubble');
+let hideTimer;
+
+function showTip(el) {
+  const key = el.dataset.tip;
+  const text = TIPS[key];
+  if (!text) return;
+  clearTimeout(hideTimer);
+  bubble.innerHTML = text;
+
+  const r = el.getBoundingClientRect();
+  const bw = 264;
+  let left = r.left + window.scrollX;
+  let top  = r.bottom + window.scrollY + 8;
+
+  // flip if near right edge
+  if (left + bw > window.innerWidth - 12) left = window.innerWidth - bw - 12;
+  // flip up if near bottom
+  const flipUp = (r.bottom + 160 > window.innerHeight);
+  if (flipUp) {
+    top = r.top + window.scrollY - bubble.offsetHeight - 14;
+    bubble.classList.add('flip-up');
+  } else {
+    bubble.classList.remove('flip-up');
+  }
+
+  bubble.style.left = left + 'px';
+  bubble.style.top  = top  + 'px';
+  bubble.classList.add('visible');
+}
+
+function hideTip() {
+  hideTimer = setTimeout(() => bubble.classList.remove('visible'), 120);
+}
+
+document.addEventListener('mouseover', e => {
+  const el = e.target.closest('.jargon');
+  if (el) showTip(el);
+});
+document.addEventListener('mouseout', e => {
+  if (e.target.closest('.jargon')) hideTip();
+});
+// touch support
+document.addEventListener('click', e => {
+  const el = e.target.closest('.jargon');
+  if (el) { showTip(el); setTimeout(hideTip, 3000); }
+});
+</script>
+
 </body>
 </html>
