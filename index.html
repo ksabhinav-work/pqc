@@ -738,24 +738,66 @@ const ALGO_HOW_QUANTUM = {
   "TLS-1.0":        "Protocol obsolete — deprecated by IETF in 2021.",
 };
 
+// Migration advice by category — cert signatures are not actionable today
+// (no browser or CA supports ML-DSA yet, expected 2026-2027)
+const CERT_SIG_ECOSYSTEM_NOTE =
+  "No action needed right now — no certificate authority currently issues quantum-safe certificates, " +
+  "and no browser validates them yet. This is a known gap across the entire internet. " +
+  "Watch for CA support expected in 2026–2027.";
+
 const ALGO_WHAT_TO_DO = {
-  "X25519":         "Ask your hosting provider or CDN to enable TLS 1.3 with X25519+ML-KEM-768 hybrid key exchange. Cloudflare, Google, and AWS already support this.",
-  "ECDH-P256":      "Enable TLS 1.3 and configure ML-KEM hybrid key exchange groups on the server.",
-  "ECDH-P384":      "Same as P-256 — upgrade to TLS 1.3 with ML-KEM hybrid groups.",
-  "RSA-2048":       "If used for key exchange: migrate to TLS 1.3. If on a certificate: reissue with ECDSA or ML-DSA key.",
-  "ECDSA-P256":     "When certificate authorities begin issuing ML-DSA certificates (in progress), reissue your certificate with an ML-DSA-44 key.",
-  "ECDSA-P384":     "Reissue certificate with ML-DSA-65 when CA support is available.",
-  "RSA-PKCS1-2048": "Reissue this certificate with an ML-DSA-65 signature when your CA supports it. Most major CAs are planning this rollout before 2028.",
-  "RSA-PKCS1-3072": "Reissue this certificate with an ML-DSA-65 signature when your CA supports it.",
-  "RSA-PKCS1-4096": "Reissue this certificate with an ML-DSA-87 signature when your CA supports it.",
-  "RSA-PSS-2048":   "Reissue this certificate with an ML-DSA-65 signature when your CA supports it.",
-  "Ed25519":        "Reissue certificate with ML-DSA-44 signature.",
-  "AES-128-GCM":    "Configure server cipher suite preferences to prioritise AES-256-GCM or ChaCha20-Poly1305.",
-  "SHA-256":        "Acceptable for now — move toward SHA-384 when issuing new certificates.",
-  "SHA-1":          "Replace immediately — this is broken regardless of quantum computers.",
-  "TLS-1.2":        "Enable TLS 1.3 on your web server (Apache, Nginx, IIS all support it). Configure ML-KEM key exchange groups.",
-  "TLS-1.1":        "Disable TLS 1.1 immediately. Enable TLS 1.3.",
-  "TLS-1.0":        "Disable TLS 1.0 immediately. Enable TLS 1.3.",
+  // ── Key Exchange — actionable today ──────────────────────────────────────
+  "X25519":              "Ask your hosting provider or CDN to enable X25519+ML-KEM-768 hybrid key exchange. This is the currently recommended transition step — it combines the classical algorithm with a quantum-safe one, so you are protected even if either has a flaw. Cloudflare, Google, and AWS already support this.",
+  "ECDH-P256":           "Configure the server to offer X25519+ML-KEM-768 as the preferred key exchange group. Most modern web servers (Nginx, Apache, Caddy) support this via a simple config change.",
+  "ECDH-P384":           "Upgrade to X25519+ML-KEM-768 hybrid key exchange. P-384 offers no advantage over P-256 against quantum attacks — both are equally vulnerable to Shor's algorithm.",
+  "ECDH-P521":           "Upgrade to X25519+ML-KEM-768 hybrid. The larger curve size does not help against quantum attacks.",
+  "X25519+Kyber768":     "This is an earlier draft of the hybrid standard. Upgrade to X25519+ML-KEM-768 (IANA 0x11ec) — the finalised version now deployed by Cloudflare and Google.",
+  "DH-2048":             "Disable DHE cipher suites entirely and switch to ECDHE or ML-KEM hybrid key exchange with TLS 1.3.",
+  "DH-4096":             "Disable DHE cipher suites and switch to TLS 1.3 with X25519+ML-KEM-768 hybrid key exchange.",
+  "RSA":                 "If this is a key exchange cipher (RSA key transport), disable it and enable TLS 1.3 with forward secrecy.",
+
+  // ── Symmetric — mostly actionable ────────────────────────────────────────
+  "AES-128-CBC":         "Upgrade to AES-256-GCM — the 256-bit key is large enough to resist Grover's algorithm, and GCM mode adds authenticated encryption.",
+  "AES-128-GCM":         "Upgrade to AES-256-GCM or ChaCha20-Poly1305. Both are quantum-safe at 256-bit key sizes and are already widely supported.",
+  "AES-128-ECB":         "Replace immediately — ECB mode leaks data patterns regardless of quantum computers. Switch to AES-256-GCM.",
+  "AES-256-CBC":         "Switch to AES-256-GCM. The key is the right size but CBC mode lacks authenticated encryption — GCM is the safe default.",
+  "AES-256-CTR":         "Switch to AES-256-GCM. CTR mode needs a separate authentication tag; GCM provides both in one.",
+  "DES":                 "Disable immediately. DES is broken by classical computers — quantum is not even the concern here.",
+  "3DES":                "Disable immediately. Triple DES was officially deprecated in 2023 and is vulnerable to classical attacks.",
+  "RC4":                 "Disable immediately. RC4 is completely broken regardless of quantum computers.",
+  "Camellia-128":        "Switch to AES-256-GCM. Camellia-128 is technically sound but rarely hardware-accelerated and has a 128-bit key.",
+  "Camellia-256":        "AES-256-GCM is preferable for broader support, though Camellia-256 is not broken.",
+  "SM4-CBC":             "Switch to SM4-GCM for authenticated encryption, or AES-256-GCM if not operating under Chinese compliance requirements.",
+
+  // ── Hash — partially actionable ──────────────────────────────────────────
+  "SHA-1":               "Replace immediately — SHA-1 is broken by classical computers, independent of quantum threats.",
+  "MD5":                 "Replace immediately — MD5 has been broken since 2004.",
+  "SHA-224":             "Upgrade to SHA-384 for any new work. SHA-224 has insufficient output length against Grover's algorithm.",
+  "SHA-256":             "Acceptable for now. For long-lived data or certificates that need to survive beyond 2030, prefer SHA-384.",
+  "SHA3-256":            "Acceptable for now. Prefer SHA3-384 for high-assurance applications.",
+  "SM3":                 "Acceptable under Chinese compliance requirements. For international systems, SHA-384 is preferred.",
+
+  // ── Protocol — actionable today ───────────────────────────────────────────
+  "TLS-1.0":             "Disable TLS 1.0 immediately on the web server. It has been retired since 2021 and is vulnerable to classical attacks. Enable TLS 1.3.",
+  "TLS-1.1":             "Disable TLS 1.1 immediately. Retired since 2021. Enable TLS 1.3.",
+  "TLS-1.2":             "Enable TLS 1.3 on the server and configure X25519+ML-KEM-768 key exchange groups. TLS 1.2 can remain as a fallback for legacy clients but should not be the primary version.",
+  "SSL-2.0":             "Disable immediately. SSL 2.0 is completely broken and should not exist on any server.",
+  "SSL-3.0":             "Disable immediately. SSL 3.0 is completely broken (POODLE attack, 2014).",
+
+  // ── Safe algorithms — no action ───────────────────────────────────────────
+  "AES-256-GCM":         "Nothing to do — AES-256-GCM is quantum-safe and the current gold standard for symmetric encryption.",
+  "ChaCha20-Poly1305":   "Nothing to do — ChaCha20-Poly1305 is quantum-safe and fully current.",
+  "AES-192-GCM":         "Nothing to do — AES-192-GCM is quantum-safe.",
+  "SHA-384":             "Nothing to do — SHA-384 is quantum-resistant.",
+  "SHA-512":             "Nothing to do — SHA-512 is quantum-resistant.",
+  "SHA3-384":            "Nothing to do — SHA3-384 is quantum-resistant.",
+  "SHA3-512":            "Nothing to do — SHA3-512 is quantum-resistant.",
+  "ML-KEM-768":          "Nothing to do — ML-KEM-768 is the current NIST standard for quantum-safe key exchange.",
+  "ML-KEM-1024":         "Nothing to do — ML-KEM-1024 is the highest-security quantum-safe key exchange.",
+  "X25519+ML-KEM-768":   "Nothing to do — this hybrid is the currently recommended quantum-safe key exchange.",
+  "X25519+ML-KEM-1024":  "Nothing to do — this is the highest-security hybrid key exchange.",
+  "SecP256r1+ML-KEM-768":"Nothing to do — this hybrid is quantum-safe.",
+  "TLS-1.3":             "Nothing to do — TLS 1.3 is the recommended protocol version. Consider also enabling X25519+ML-KEM-768 key exchange if not already active.",
 };
 
 // Paper theme threat colors — desaturated, ink-like
@@ -1244,17 +1286,17 @@ function findingCard(f, chain) {
   const caName = caNameMatch ? caNameMatch[1] : null;
   const caOperator = caName ? (CA_OPERATORS[caName] || caName) : null;
 
-  if (ctx.includes("Intermediate CA") && f.category === "Signature") {
-    const caLabel = caOperator ? `<strong>${caOperator}</strong>` : "the CA operator";
-    const caShort = caOperator || "The CA";
-    whatToDo = `This certificate belongs to ${caLabel}, not the website owner. ` +
-      `${caShort} must migrate their signing infrastructure to ML-DSA — ` +
-      `this is the CA's responsibility. Expected before 2030.`;
-  } else if (ctx.includes("Root CA") && f.category === "Signature") {
-    const caLabel = caOperator ? `<strong>${caOperator}</strong>` : "this Root CA";
-    const caShort = caOperator || "This Root CA";
-    whatToDo = `${caLabel} is embedded in every OS and browser, making it the hardest to migrate. ` +
-      `${caShort} is planning the transition to ML-DSA now. Expected timeline: 2028–2033.`;
+  // Certificate signature findings — not actionable by website owners today
+  if (f.category === "Signature" && f.ftype === "sig_key") {
+    if (ctx.includes("Leaf")) {
+      whatToDo = "No action possible right now. No certificate authority currently issues quantum-safe certificates, and no browser validates them yet. This is a known gap across the entire internet — watch for CA support expected in 2026–2027.";
+    } else if (ctx.includes("Intermediate CA")) {
+      const caLabel = caOperator ? `<strong>${caOperator}</strong>` : "the certificate authority";
+      whatToDo = `This certificate belongs to ${caLabel}, not the website owner. The CA must upgrade their own infrastructure when browser and OS vendors add support — expected 2027–2030.`;
+    } else if (ctx.includes("Root CA")) {
+      const caLabel = caOperator ? `<strong>${caOperator}</strong>` : "this root authority";
+      whatToDo = `${caLabel} is embedded in every OS and browser. Root CA migration is a multi-year ecosystem effort coordinated between the CA, browser vendors, and OS makers. Expected timeline: 2028–2033.`;
+    }
   }
 
   const hasDetails = howQ || whatToDo;
