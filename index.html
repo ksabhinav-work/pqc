@@ -5,199 +5,409 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Quantum Security Check</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,300;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:      #08090f;
-      --bg2:     #0c0d18;
-      --bg3:     #101220;
-      --border:  #181a2e;
-      --border2: #202340;
-      --text:    #d0d8f0;
-      --muted:   #5a6490;
-      --red:     #ff3355;
-      --orange:  #ff6b35;
-      --yellow:  #ffd60a;
-      --green:   #2ecc71;
-      --blue:    #3b82f6;
-      --teal:    #14b8a6;
+      --paper:   #f5f0e8;
+      --paper2:  #ede8de;
+      --paper3:  #e8e2d5;
+      --ink:     #1a1714;
+      --ink2:    #2d2926;
+      --muted:   #7a6f60;
+      --rule:    #c8bfaa;
+      --rule2:   #b0a590;
+      --red:     #9b1c1c;
+      --orange:  #9a3412;
+      --amber:   #92400e;
+      --green:   #14532d;
+      --navy:    #1e3a5f;
+      --stamp-red: #c41e3a;
     }
 
     body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'Inter', sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: 'Source Serif 4', Georgia, serif;
       min-height: 100vh;
-      background-image: radial-gradient(ellipse 80% 35% at 50% 0%, rgba(59,130,246,0.07) 0%, transparent 70%);
+      /* subtle paper grain */
+      background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
     }
 
+    /* ── MASTHEAD ──────────────────────────────────────────── */
     header {
       max-width: 860px; margin: 0 auto;
-      padding: 36px 24px 28px;
-      border-bottom: 1px solid var(--border);
+      padding: 0 24px 24px;
+      border-bottom: 2px solid var(--ink);
+    }
+    .masthead-rule {
+      height: 5px;
+      background: var(--ink);
+      margin-bottom: 3px;
+    }
+    .masthead-thin {
+      height: 1px;
+      background: var(--ink);
+      margin-bottom: 20px;
     }
     .header-eyebrow {
-      font-size: 10px; font-weight: 600; letter-spacing: .2em;
-      color: var(--blue); margin-bottom: 10px;
-      font-family: 'JetBrains Mono', monospace;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9px; font-weight: 500; letter-spacing: .25em;
+      color: var(--muted); text-transform: uppercase;
+      margin-bottom: 8px;
+      display: flex; justify-content: space-between; align-items: center;
     }
-    h1 { font-size: 28px; font-weight: 700; color: #eef0ff; margin-bottom: 8px; }
-    .header-sub { font-size: 14px; color: var(--muted); line-height: 1.6; max-width: 520px; }
+    h1 {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 38px; font-weight: 700; color: var(--ink);
+      line-height: 1.15; margin-bottom: 10px;
+      letter-spacing: -.01em;
+    }
+    h1 em { font-style: italic; font-weight: 400; }
+    .header-sub {
+      font-size: 14px; color: var(--muted); line-height: 1.7;
+      max-width: 540px; font-weight: 300;
+      margin-top: 10px;
+    }
 
+    /* ── MAIN ──────────────────────────────────────────────── */
     main { max-width: 860px; margin: 0 auto; padding: 28px 24px 80px; }
 
-    .scan-box {
-      background: var(--bg2); border: 1px solid var(--border);
-      border-radius: 10px; overflow: hidden; margin-bottom: 10px;
+    /* ── SCAN BOX ──────────────────────────────────────────── */
+    /* ── KEYBOARD VARIABLES ───────────────────────────────── */
+    :root {
+      --key-face:    #f0ebe0;
+      --key-side:    #b0a48a;
+      --key-shadow:  #9a9080;
+      --key-active:  #e4ddd0;
+      --key-border:  #c8b99a;
+      --kb-plate:    #d8d0c0;
+      --kb-plate2:   #c8c0b0;
     }
-    .scan-row { display: flex; }
+
+    /* ── SCAN BOX (keyboard plate) ─────────────────────────── */
+    .scan-box {
+      background: var(--kb-plate);
+      border: 1px solid var(--key-shadow);
+      border-bottom: 3px solid var(--key-shadow);
+      border-radius: 6px;
+      padding: 10px 10px 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,.12), 0 1px 3px rgba(0,0,0,.08);
+      margin-bottom: 10px;
+    }
+
+    /* The URL bar — a wide "key" */
+    .scan-row {
+      display: flex;
+      background: var(--key-face);
+      border: 1px solid var(--key-border);
+      border-bottom: 3px solid var(--key-side);
+      border-radius: 5px;
+      overflow: hidden;
+      box-shadow: 0 1px 0 var(--key-shadow), inset 0 1px 0 rgba(255,255,255,.6);
+      transition: box-shadow .1s, border-bottom-width .1s, transform .1s;
+    }
+    .scan-row:focus-within {
+      border-color: var(--ink);
+      border-bottom-color: #555;
+      box-shadow: 0 1px 0 #444, inset 0 1px 0 rgba(255,255,255,.6), 0 0 0 2px rgba(26,23,20,.08);
+    }
+
     .scan-prefix {
-      display: flex; align-items: center; padding: 0 14px;
-      font-family: 'JetBrains Mono', monospace; font-size: 13px;
-      color: var(--muted); border-right: 1px solid var(--border);
+      display: flex; align-items: center; padding: 0 12px;
+      font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+      color: var(--muted); border-right: 1px solid var(--key-border);
       white-space: nowrap;
+      background: linear-gradient(180deg, rgba(255,255,255,.35) 0%, transparent 100%);
+      user-select: none;
     }
     #domain-input {
       flex: 1; background: transparent; border: none; outline: none;
-      color: var(--text); font-family: 'Inter', sans-serif; font-size: 15px;
-      padding: 16px; height: 56px;
+      color: var(--ink); font-family: 'IBM Plex Mono', monospace;
+      font-size: 14px; padding: 15px 14px; height: 52px;
     }
-    #domain-input::placeholder { color: #252840; }
+    #domain-input::placeholder { color: var(--key-side); }
+
+    /* Inspect button — its own standalone key */
     #scan-btn {
-      background: var(--blue); color: #fff; border: none;
-      padding: 0 28px; font-family: 'Inter', sans-serif;
-      font-size: 13px; font-weight: 600; cursor: pointer;
-      transition: background .2s; white-space: nowrap;
+      background: linear-gradient(180deg, #2a2520 0%, #1a1714 100%);
+      color: #f0ebe0;
+      border: 1px solid #111;
+      border-bottom: 3px solid #0a0807;
+      border-radius: 5px;
+      padding: 0 22px;
+      margin: 0 0 0 8px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px; font-weight: 500; cursor: pointer;
+      white-space: nowrap; letter-spacing: .05em;
+      box-shadow: 0 1px 0 #000, inset 0 1px 0 rgba(255,255,255,.12);
+      transition: all .08s;
+      flex-shrink: 0;
+      height: 52px;
     }
-    #scan-btn:hover:not(:disabled) { background: #5b9cf8; }
+    #scan-btn:hover:not(:disabled) {
+      background: linear-gradient(180deg, #3a3530 0%, #2a2520 100%);
+    }
+    #scan-btn:active:not(:disabled) {
+      border-bottom-width: 1px;
+      transform: translateY(2px);
+      box-shadow: 0 0 0 #000, inset 0 1px 0 rgba(255,255,255,.08);
+    }
     #scan-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* ── EXAMPLES (pill keyboard row) ─────────────────────── */
     .examples-panel {
-      border-top: 1px solid var(--border);
-      padding: 10px 14px 12px;
+      margin-top: 8px;
+      padding: 2px 2px 0;
       display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
     }
-    .eg-pill {
-      font-size: 11px; padding: 3px 10px; border-radius: 20px;
-      border: 1px solid var(--border2); color: #6070a0;
-      cursor: pointer; transition: all .15s; background: transparent;
-      font-family: "JetBrains Mono", monospace; white-space: nowrap;
-    }
-    .eg-pill:hover { border-color: var(--blue); color: var(--blue); }
 
-    #status { font-size: 12px; color: var(--muted); min-height: 20px; margin-bottom: 20px; }
+    /* Each pill = a keycap */
+    .eg-pill {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      padding: 5px 10px 6px;
+      border-radius: 4px;
+      background: linear-gradient(180deg, var(--key-face) 0%, #e6dfd4 100%);
+      border: 1px solid var(--key-border);
+      border-bottom: 3px solid var(--key-side);
+      color: #5a5040;
+      cursor: pointer;
+      white-space: nowrap;
+      box-shadow: 0 1px 0 var(--key-shadow), inset 0 1px 0 rgba(255,255,255,.7);
+      transition: all .08s;
+      user-select: none;
+      display: inline-block;
+      position: relative;
+      top: 0;
+    }
+    .eg-pill:hover {
+      background: linear-gradient(180deg, #fff 0%, #f5f0e8 100%);
+      color: var(--ink);
+      border-color: #a09080;
+      border-bottom-color: #887868;
+    }
+    .eg-pill:active {
+      border-bottom-width: 1px;
+      top: 2px;
+      box-shadow: 0 0 0 var(--key-shadow), inset 0 1px 0 rgba(255,255,255,.4);
+      background: linear-gradient(180deg, #e4ddd0 0%, #d8d0c4 100%);
+    }
+
+    /* ── STATUS ────────────────────────────────────────────── */
+    #status { font-size: 12px; color: var(--muted); min-height: 20px;
+              margin-bottom: 20px; font-style: italic; font-family: 'Source Serif 4', serif; }
     .spinner {
-      display: inline-block; width: 12px; height: 12px;
-      border: 2px solid var(--blue); border-top-color: transparent;
+      display: inline-block; width: 11px; height: 11px;
+      border: 2px solid var(--ink); border-top-color: transparent;
       border-radius: 50%; animation: spin .7s linear infinite;
       vertical-align: middle; margin-right: 6px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ── VERDICT ───────────────────────────────────────────── */
     .verdict-card {
-      border-radius: 10px; border: 1px solid var(--border2);
-      padding: 24px; margin-bottom: 24px;
+      border-radius: 2px; border: 1px solid var(--rule);
+      border-left-width: 5px;
+      padding: 22px 24px; margin-bottom: 28px;
       display: grid; grid-template-columns: auto 1fr;
       gap: 20px; align-items: center;
+      background: #fff;
+      box-shadow: 2px 2px 0 var(--paper2);
     }
-    .verdict-emoji { font-size: 52px; line-height: 1; }
-    .verdict-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
-    .verdict-domain { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
-    .verdict-plain { font-size: 14px; line-height: 1.7; color: #8090c0; }
-
-    .section { margin-bottom: 28px; }
-    .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-    .section-icon {
-      width: 34px; height: 34px; border-radius: 8px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 16px; flex-shrink: 0;
+    .verdict-emoji { font-size: 44px; line-height: 1; }
+    .verdict-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px; font-weight: 700; margin-bottom: 5px;
     }
-    .section-title { font-size: 15px; font-weight: 700; color: #e0e8ff; }
-    .section-desc { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+    .verdict-domain {
+      font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+      color: var(--muted); margin-bottom: 8px;
+    }
+    .verdict-plain { font-size: 14px; line-height: 1.75; color: var(--muted); font-weight: 300; }
 
+    /* ── SECTIONS ──────────────────────────────────────────── */
+    .section { margin-bottom: 32px; }
+    .section-header {
+      display: flex; align-items: flex-start; gap: 14px;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--rule);
+    }
+    .section-numeral {
+      font-family: 'Playfair Display', serif;
+      font-size: 28px; font-weight: 400; font-style: italic;
+      color: var(--rule2); line-height: 1; flex-shrink: 0;
+      width: 28px; text-align: center; margin-top: 2px;
+    }
+    .section-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 16px; font-weight: 700; color: var(--ink);
+    }
+    .section-desc {
+      font-size: 13px; color: var(--muted); margin-top: 3px;
+      line-height: 1.65; font-weight: 300;
+    }
+    .section-desc strong { color: var(--ink2); font-weight: 600; }
+    .section-desc em { font-style: italic; }
+
+    /* ── FINDING CARDS ─────────────────────────────────────── */
     .finding-card {
-      background: var(--bg2); border: 1px solid var(--border);
-      border-radius: 10px; overflow: hidden; margin-bottom: 10px;
+      background: #fff;
+      border: 1px solid var(--rule);
+      border-radius: 2px;
+      overflow: hidden; margin-bottom: 8px;
+      box-shadow: 1px 1px 0 var(--paper2);
     }
     .finding-top {
-      padding: 16px 18px;
+      padding: 14px 18px;
       display: grid; grid-template-columns: 1fr auto;
       gap: 12px; align-items: start;
     }
-    .finding-algo { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
-    .finding-plain { font-size: 13px; color: #8090c0; line-height: 1.55; }
+    .finding-algo {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12.5px; font-weight: 500; margin-bottom: 4px;
+    }
+    .finding-plain { font-size: 13px; color: var(--muted); line-height: 1.6; font-weight: 300; }
+
+    /* stamp-style status pills */
     .status-pill {
-      font-size: 11px; font-weight: 700; padding: 5px 12px;
-      border-radius: 20px; border: 1px solid; white-space: nowrap;
-      flex-shrink: 0; text-align: center;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px; font-weight: 500; padding: 4px 10px;
+      border-radius: 2px; border: 1.5px solid; white-space: nowrap;
+      flex-shrink: 0; text-align: center; text-transform: uppercase;
+      letter-spacing: .08em;
     }
 
     .detail-toggle {
-      width: 100%; background: none; border: none; border-top: 1px solid var(--border);
-      color: var(--muted); font-family: 'Inter', sans-serif;
-      font-size: 11px; padding: 9px 18px; cursor: pointer;
-      text-align: left; transition: color .15s; display: flex;
-      align-items: center; gap: 6px;
+      width: 100%; background: var(--paper2); border: none;
+      border-top: 1px solid var(--rule);
+      color: var(--muted); font-family: 'Source Serif 4', serif;
+      font-size: 11.5px; padding: 8px 18px; cursor: pointer;
+      text-align: left; transition: color .12s; display: flex;
+      align-items: center; gap: 6px; font-style: italic;
     }
-    .detail-toggle:hover { color: var(--blue); }
+    .detail-toggle:hover { color: var(--ink); background: var(--paper3); }
 
     .finding-details {
-      border-top: 0px solid var(--border);
+      border-top: 0px solid var(--rule);
       padding: 0 18px;
       max-height: 0; overflow: hidden;
       transition: max-height .35s ease, padding .35s ease;
+      background: var(--paper);
     }
-    .finding-details.open { max-height: 800px; padding: 16px 18px; border-top: 1px solid var(--border); }
+    .finding-details.open {
+      max-height: 800px; padding: 16px 18px;
+      border-top: 1px solid var(--rule);
+    }
 
     .detail-grid { display: grid; grid-template-columns: 140px 1fr; gap: 10px 16px; }
-    .detail-label { font-size: 11px; color: var(--muted); font-weight: 600; padding-top: 1px; }
-    .detail-value { font-size: 12px; color: var(--text); line-height: 1.6; }
-    .detail-value.code { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
-    .detail-value.good { color: var(--green); }
-    .detail-value.warn { color: var(--yellow); }
-
-    .cert-meta {
-      background: var(--bg3); border: 1px solid var(--border);
-      border-radius: 8px; padding: 14px 16px; margin-bottom: 10px;
+    .detail-label {
+      font-size: 10px; color: var(--muted); font-weight: 600;
+      text-transform: uppercase; letter-spacing: .1em;
+      padding-top: 2px; font-family: 'IBM Plex Mono', monospace;
     }
-    .cert-row { display: grid; grid-template-columns: 100px 1fr; gap: 4px 12px; font-size: 12px; margin-bottom: 4px; }
-    .cert-key { color: var(--muted); }
-    .cert-val { font-family: 'JetBrains Mono', monospace; color: var(--text); word-break: break-all; }
+    .detail-value { font-size: 12.5px; color: var(--ink2); line-height: 1.65; }
+    .detail-value.code { font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+    .detail-value.good { color: var(--green); }
+    .detail-value.warn { color: var(--orange); }
 
-    .action-card { border-radius: 10px; border: 1px solid; padding: 18px 20px; margin-bottom: 10px; }
-    .action-title { font-size: 13px; font-weight: 700; margin-bottom: 10px; }
-    .action-body { font-size: 13px; line-height: 1.75; color: #8090c0; }
-    .action-body strong { color: var(--text); }
+    /* ── CERT META ─────────────────────────────────────────── */
+    .cert-meta {
+      background: var(--paper2);
+      border: 1px solid var(--rule);
+      border-radius: 2px; padding: 14px 16px; margin-bottom: 10px;
+    }
+    .cert-row {
+      display: grid; grid-template-columns: 100px 1fr;
+      gap: 4px 12px; font-size: 12px; margin-bottom: 5px;
+    }
+    .cert-key {
+      color: var(--muted); font-size: 10px; text-transform: uppercase;
+      letter-spacing: .08em; font-family: 'IBM Plex Mono', monospace;
+      font-weight: 500; padding-top: 1px;
+    }
+    .cert-val {
+      font-family: 'IBM Plex Mono', monospace;
+      color: var(--ink); word-break: break-all; font-size: 11.5px;
+    }
 
-    .timeline { display: flex; border-radius: 6px; overflow: hidden; height: 8px; margin: 14px 0 4px; }
-    .tl-safe { background: var(--border2); }
-    .tl-danger { flex: 1; opacity: .8; }
-    .tl-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
-    .tl-note { font-size: 10px; color: var(--muted); margin-top: 14px; }
+    /* ── ACTION CARDS ──────────────────────────────────────── */
+    .action-card {
+      border-radius: 2px; border: 1px solid var(--rule);
+      border-left-width: 4px;
+      padding: 18px 20px; margin-bottom: 10px;
+      background: #fff;
+      box-shadow: 1px 1px 0 var(--paper2);
+    }
+    .action-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 14px; font-weight: 700; margin-bottom: 12px;
+    }
+    .action-body { font-size: 13px; line-height: 1.8; color: var(--muted); font-weight: 300; }
+    .action-body strong { color: var(--ink2); font-weight: 600; }
+    .action-body br + br + strong { /* section heads */ }
 
+    /* ── TIMELINE ──────────────────────────────────────────── */
+    .timeline { display: flex; border-radius: 1px; overflow: hidden; height: 6px; margin: 14px 0 5px; border: 1px solid var(--rule); }
+    .tl-safe { background: var(--paper2); }
+    .tl-danger { flex: 1; opacity: .75; }
+    .tl-labels {
+      display: flex; justify-content: space-between;
+      font-size: 10px; color: var(--muted);
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .tl-note { font-size: 11px; color: var(--muted); margin-top: 10px; font-style: italic; }
+
+    /* ── INFO / ERROR ──────────────────────────────────────── */
     .info-note {
-      background: rgba(59,130,246,.06); border: 1px solid rgba(59,130,246,.15);
-      border-radius: 8px; padding: 12px 16px;
-      font-size: 12px; color: #6080b0; line-height: 1.6; margin-bottom: 10px;
+      background: var(--paper2); border: 1px solid var(--rule);
+      border-left: 3px solid var(--navy);
+      border-radius: 2px; padding: 10px 14px;
+      font-size: 12.5px; color: var(--muted);
+      line-height: 1.6; margin-bottom: 10px; font-style: italic;
     }
     .error-box {
-      background: rgba(255,51,85,.07); border: 1px solid rgba(255,51,85,.2);
-      border-radius: 8px; padding: 16px; color: var(--red); font-size: 13px; line-height: 1.6;
+      background: #fff5f5; border: 1px solid #fca5a5;
+      border-left: 4px solid var(--red);
+      border-radius: 2px; padding: 16px;
+      color: var(--red); font-size: 13px; line-height: 1.7;
     }
-    .divider { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
+    .error-box a { color: var(--navy); }
+    .divider {
+      border: none;
+      border-top: 1px solid var(--rule);
+      margin: 28px 0;
+    }
+    .divider-heavy {
+      border: none;
+      border-top: 2px solid var(--ink);
+      margin: 32px 0 28px;
+    }
 
-    footer { text-align: center; padding: 24px; font-size: 11px; color: var(--border2); border-top: 1px solid var(--border); }
+    /* ── FOOTER ────────────────────────────────────────────── */
+    footer {
+      text-align: center; padding: 20px 24px;
+      font-size: 11px; color: var(--rule2);
+      border-top: 2px solid var(--rule);
+      font-family: 'IBM Plex Mono', monospace;
+      letter-spacing: .05em;
+    }
 
+    /* ── ANIMATIONS ────────────────────────────────────────── */
     @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(8px); }
+      from { opacity: 0; transform: translateY(6px); }
       to   { opacity: 1; transform: translateY(0); }
     }
     .fade-up { animation: fadeUp .3s ease forwards; }
 
+    /* ── RESPONSIVE ────────────────────────────────────────── */
     @media (max-width: 600px) {
+      h1 { font-size: 28px; }
       .verdict-card { grid-template-columns: 1fr; }
-      .verdict-emoji { font-size: 36px; }
+      .verdict-emoji { font-size: 32px; }
       .finding-top { grid-template-columns: 1fr; }
       .detail-grid { grid-template-columns: 1fr; }
     }
@@ -206,12 +416,65 @@
 <body>
 
 <header>
-  <div class="header-eyebrow">◈ QUANTUM SECURITY SCANNER</div>
-  <h1>Is this website quantum-safe?</h1>
-  <p class="header-sub">
-    Quantum computers — expected around 2030 — will be able to break the encryption most websites use today.
-    This tool checks how prepared a site is, and explains what it means in plain English.
-  </p>
+  <div class="masthead-rule"></div>
+  <div class="masthead-thin"></div>
+  <div style="display:flex;align-items:center;gap:28px">
+    <!-- IBM dilution refrigerator — minimalist ink illustration -->
+    <svg width="120" height="175" viewBox="0 0 110 160" fill="none" xmlns="http://www.w3.org/2000/svg"
+         style="flex-shrink:0;opacity:.75">
+      <!-- mounting plate -->
+      <rect x="25" y="4" width="60" height="7" rx="2" fill="#c8b99a" stroke="#8a7a62" stroke-width="1"/>
+      <!-- hanging rod -->
+      <line x1="55" y1="11" x2="55" y2="22" stroke="#8a7a62" stroke-width="1.5"/>
+      <!-- stage 1 — top disk (wide) -->
+      <ellipse cx="55" cy="26" rx="28" ry="5" fill="#e8dfc8" stroke="#8a7a62" stroke-width="1"/>
+      <!-- wires down from stage 1 -->
+      <line x1="34" y1="31" x2="34" y2="48" stroke="#a09070" stroke-width="1" stroke-dasharray="2,2"/>
+      <line x1="55" y1="31" x2="55" y2="48" stroke="#a09070" stroke-width="1" stroke-dasharray="2,2"/>
+      <line x1="76" y1="31" x2="76" y2="48" stroke="#a09070" stroke-width="1" stroke-dasharray="2,2"/>
+      <!-- stage 2 disk -->
+      <ellipse cx="55" cy="49" rx="22" ry="4.5" fill="#dfd5bc" stroke="#8a7a62" stroke-width="1"/>
+      <!-- wires -->
+      <line x1="38" y1="53" x2="38" y2="67" stroke="#a09070" stroke-width="1" stroke-dasharray="2,2"/>
+      <line x1="55" y1="53" x2="55" y2="67" stroke="#a09070" stroke-width="1" stroke-dasharray="2,2"/>
+      <line x1="72" y1="53" x2="72" y2="67" stroke="#a09070" stroke-width="1" stroke-dasharray="2,2"/>
+      <!-- stage 3 disk -->
+      <ellipse cx="55" cy="68" rx="17" ry="4" fill="#d4c9ae" stroke="#8a7a62" stroke-width="1"/>
+      <!-- wires -->
+      <line x1="43" y1="72" x2="43" y2="84" stroke="#a09070" stroke-width="1" stroke-dasharray="2,2"/>
+      <line x1="55" y1="72" x2="55" y2="84" stroke="#a09070" stroke-width="1" stroke-dasharray="2,2"/>
+      <line x1="67" y1="72" x2="67" y2="84" stroke="#a09070" stroke-width="1" stroke-dasharray="2,2"/>
+      <!-- stage 4 disk (smaller) -->
+      <ellipse cx="55" cy="85" rx="13" ry="3.5" fill="#c8bda0" stroke="#8a7a62" stroke-width="1"/>
+      <!-- wires to mixing chamber -->
+      <line x1="47" y1="88" x2="47" y2="98" stroke="#a09070" stroke-width="1"/>
+      <line x1="55" y1="88" x2="55" y2="98" stroke="#a09070" stroke-width="1"/>
+      <line x1="63" y1="88" x2="63" y2="98" stroke="#a09070" stroke-width="1"/>
+      <!-- mixing chamber cylinder -->
+      <rect x="40" y="98" width="30" height="22" rx="3" fill="#e8dfc8" stroke="#8a7a62" stroke-width="1.2"/>
+      <ellipse cx="55" cy="98" rx="15" ry="3" fill="#dfd5bc" stroke="#8a7a62" stroke-width="1"/>
+      <!-- qubit chip at bottom of mixing chamber -->
+      <ellipse cx="55" cy="120" rx="15" ry="3" fill="#c8b99a" stroke="#7a6a52" stroke-width="1"/>
+      <!-- qubit detail lines on chip -->
+      <line x1="44" y1="120" x2="66" y2="120" stroke="#7a6a52" stroke-width=".6"/>
+      <line x1="55" y1="117" x2="55" y2="123" stroke="#7a6a52" stroke-width=".6"/>
+      <circle cx="55" cy="120" r="2.5" fill="none" stroke="#7a6a52" stroke-width=".8"/>
+      <!-- outer vacuum can -->
+      <path d="M33 98 Q28 104 28 112 Q28 128 33 132 L40 134" stroke="#b0a080" stroke-width="1" fill="none" stroke-dasharray="3,2"/>
+      <path d="M77 98 Q82 104 82 112 Q82 128 77 132 L70 134" stroke="#b0a080" stroke-width="1" fill="none" stroke-dasharray="3,2"/>
+      <!-- label -->
+    </svg>
+    <div>
+      <h1>Can a quantum computer<br><em>break this website?</em></h1>
+      <p class="header-sub">
+        This tool performs a live TLS handshake with a website and inspects the
+        cryptographic algorithms your browser would use to connect to it — the key exchange,
+        the certificate chain, and the cipher. It then rates each against post-quantum
+        standards and explains what it means.
+      </p>
+    </div>
+  </div>
+
 </header>
 
 <main>
@@ -220,7 +483,7 @@
       <div class="scan-prefix">https://</div>
       <input id="domain-input" type="text" placeholder="youtube.com · ifsca.gov.in · cloudflare.com"
              autocomplete="off" spellcheck="false"/>
-      <button id="scan-btn" onclick="scan()">Check →</button>
+      <button id="scan-btn" onclick="scan()">Inspect →</button>
     </div>
     <div class="examples-panel">
       <!-- Regulators -->
@@ -231,7 +494,7 @@
       <span class="eg-pill" onclick="pick('pfrda.org.in')">pfrda.org.in</span>
       <span class="eg-pill" onclick="pick('finmin.nic.in')">finmin.nic.in</span>
       <span class="eg-pill" onclick="pick('idrbt.ac.in')">idrbt.ac.in</span>
-      <!-- IFSCA MII (Exchanges / Clearing / Depository) -->
+      <!-- IFSCA MII -->
       <span class="eg-pill" onclick="pick('indiainx.com')">indiainx.com</span>
       <span class="eg-pill" onclick="pick('nseix.com')">nseix.com</span>
       <span class="eg-pill" onclick="pick('iibx.co.in')">iibx.co.in</span>
@@ -244,14 +507,14 @@
       <span class="eg-pill" onclick="pick('nseindia.com')">nseindia.com</span>
       <span class="eg-pill" onclick="pick('mcxindia.com')">mcxindia.com</span>
       <span class="eg-pill" onclick="pick('ncdex.com')">ncdex.com</span>
-      <!-- Public Sector Banks (.bank.in) -->
+      <!-- Public Sector Banks -->
       <span class="eg-pill" onclick="pick('sbi.bank.in')">sbi.bank.in</span>
       <span class="eg-pill" onclick="pick('pnb.bank.in')">pnb.bank.in</span>
       <span class="eg-pill" onclick="pick('canarabank.bank.in')">canarabank.bank.in</span>
       <span class="eg-pill" onclick="pick('bankofindia.bank.in')">bankofindia.bank.in</span>
       <span class="eg-pill" onclick="pick('bankofbaroda.bank.in')">bankofbaroda.bank.in</span>
       <span class="eg-pill" onclick="pick('unionbankofindia.bank.in')">unionbankofindia.bank.in</span>
-      <!-- Private Banks (.bank.in) -->
+      <!-- Private Banks -->
       <span class="eg-pill" onclick="pick('hdfc.bank.in')">hdfc.bank.in</span>
       <span class="eg-pill" onclick="pick('icici.bank.in')">icici.bank.in</span>
       <span class="eg-pill" onclick="pick('axis.bank.in')">axis.bank.in</span>
@@ -260,14 +523,14 @@
       <span class="eg-pill" onclick="pick('indusind.bank.in')">indusind.bank.in</span>
       <span class="eg-pill" onclick="pick('yesbank.bank.in')">yesbank.bank.in</span>
       <span class="eg-pill" onclick="pick('rbl.bank.in')">rbl.bank.in</span>
-      <!-- Global Banks (IBUs at GIFT City) -->
+      <!-- Global Banks -->
       <span class="eg-pill" onclick="pick('sc.com')">sc.com</span>
       <span class="eg-pill" onclick="pick('db.com')">db.com</span>
       <span class="eg-pill" onclick="pick('barclays.com')">barclays.com</span>
       <span class="eg-pill" onclick="pick('jpmorgan.com')">jpmorgan.com</span>
       <span class="eg-pill" onclick="pick('citibank.com')">citibank.com</span>
       <span class="eg-pill" onclick="pick('hsbc.com')">hsbc.com</span>
-      <!-- Insurance & Reinsurance (IFSCA IIOs) -->
+      <!-- Insurance -->
       <span class="eg-pill" onclick="pick('licindia.in')">licindia.in</span>
       <span class="eg-pill" onclick="pick('gicofindia.com')">gicofindia.com</span>
       <span class="eg-pill" onclick="pick('newindia.co.in')">newindia.co.in</span>
@@ -278,7 +541,7 @@
       <span class="eg-pill" onclick="pick('tataaia.com')">tataaia.com</span>
       <span class="eg-pill" onclick="pick('munichre.com')">munichre.com</span>
       <span class="eg-pill" onclick="pick('swissre.com')">swissre.com</span>
-      <!-- IFSCA Broker-Dealers -->
+      <!-- Brokers -->
       <span class="eg-pill" onclick="pick('anandrathigiftcity.com')">anandrathigiftcity.com</span>
       <span class="eg-pill" onclick="pick('indmoney.com')">indmoney.com</span>
       <span class="eg-pill" onclick="pick('emkayglobal.com')">emkayglobal.com</span>
@@ -288,21 +551,21 @@
       <span class="eg-pill" onclick="pick('zerodha.com')">zerodha.com</span>
       <span class="eg-pill" onclick="pick('groww.in')">groww.in</span>
       <span class="eg-pill" onclick="pick('indiainfoline.com')">indiainfoline.com</span>
-      <!-- Fund Managers (IFSCA FMEs) -->
+      <!-- Fund Managers -->
       <span class="eg-pill" onclick="pick('sbimf.com')">sbimf.com</span>
       <span class="eg-pill" onclick="pick('hdfcfund.com')">hdfcfund.com</span>
       <span class="eg-pill" onclick="pick('nipponindiaim.com')">nipponindiaim.com</span>
       <span class="eg-pill" onclick="pick('tatamutualfund.com')">tatamutualfund.com</span>
       <span class="eg-pill" onclick="pick('miraeam.com')">miraeam.com</span>
       <span class="eg-pill" onclick="pick('amfiindia.com')">amfiindia.com</span>
-      <!-- Global Financial Bodies -->
+      <!-- Global Bodies -->
       <span class="eg-pill" onclick="pick('bis.org')">bis.org</span>
       <span class="eg-pill" onclick="pick('imf.org')">imf.org</span>
       <span class="eg-pill" onclick="pick('swift.com')">swift.com</span>
       <span class="eg-pill" onclick="pick('fsb.org')">fsb.org</span>
       <span class="eg-pill" onclick="pick('iosco.org')">iosco.org</span>
       <span class="eg-pill" onclick="pick('fatf-gafi.org')">fatf-gafi.org</span>
-      <!-- PQC Reference (leaders vs laggards) -->
+      <!-- PQC Reference -->
       <span class="eg-pill" onclick="pick('cloudflare.com')">cloudflare.com</span>
       <span class="eg-pill" onclick="pick('google.com')">google.com</span>
       <span class="eg-pill" onclick="pick('youtube.com')">youtube.com</span>
@@ -313,12 +576,11 @@
   <div id="results"></div>
 </main>
 
-<footer>Scans are live TLS handshakes · No data stored · Built for education</footer>
+<footer>Scans are live TLS handshakes &nbsp;·&nbsp; No data stored &nbsp;·&nbsp; Built for education</footer>
 
 <script>
 const API_BASE = "https://pqc-3p1d.onrender.com";
 
-// Plain English descriptions
 const ALGO_PLAIN = {
   "X25519+ML-KEM-768":    "Uses a hybrid lock combining a classical key and a new quantum-resistant key. Even a quantum computer cannot break this.",
   "SecP256r1+ML-KEM-768": "Hybrid key exchange: classical P-256 plus quantum-safe ML-KEM. Well protected against quantum attacks.",
@@ -343,9 +605,9 @@ const ALGO_PLAIN = {
   "ECDSA-P256":           "Signs this certificate using elliptic curve cryptography. A quantum computer running Shor's algorithm could forge this signature and impersonate the server.",
   "ECDSA-P384":           "Stronger elliptic curve signature. Same quantum vulnerability as P-256, just needs a slightly larger quantum computer.",
   "RSA-PKCS1-2048":       "RSA-2048 signature — used to sign this certificate or a CA certificate in the chain. A quantum computer running Shor's algorithm could factor the underlying key and forge signatures, breaking the entire trust chain below it.",
-  "RSA-PKCS1-3072":       "RSA-3072 signature. Stronger classically than 2048-bit, but still broken by a quantum computer. Appears in a CA certificate in the trust chain.",
+  "RSA-PKCS1-3072":       "RSA-3072 signature. Stronger classically than 2048-bit, but still broken by a quantum computer.",
   "RSA-PKCS1-4096":       "RSA-4096 signature — typically used by root CAs for their long-lived keys. Quantum-vulnerable, but requires a larger quantum computer to break than 2048-bit.",
-  "RSA-PSS-2048":         "RSA-PSS is a more modern RSA padding scheme. The underlying key is still quantum-vulnerable — the padding doesn't help against Shor's algorithm.",
+  "RSA-PSS-2048":         "RSA-PSS is a more modern RSA padding scheme. The underlying key is still quantum-vulnerable.",
   "Ed25519":              "Modern elliptic curve signature, very efficient. Still quantum-vulnerable via Shor's algorithm.",
   "ML-DSA-44":            "New quantum-safe signature standard (FIPS 204). Fully resistant.",
   "ML-DSA-65":            "Quantum-safe signature, medium security level. NIST standard.",
@@ -362,92 +624,86 @@ const ALGO_PLAIN = {
 };
 
 const ALGO_HOW_QUANTUM = {
-  "X25519":          "Shor's Algorithm: a quantum computer solves the elliptic curve discrete logarithm — the math problem that makes this secure — in polynomial time instead of exponential time.",
-  "ECDH-P256":       "Shor's Algorithm: solves the discrete logarithm on the P-256 elliptic curve. Classical computers would take billions of years; a mature quantum computer could do it in hours.",
-  "ECDH-P384":       "Shor's Algorithm: same attack, just needs a slightly larger quantum processor to run.",
-  "ECDH-P521":       "Shor's Algorithm: needs more qubits than P-256, but still broken by a sufficiently powerful quantum computer.",
-  "RSA-2048":        "Shor's Algorithm: factors the large numbers that RSA security depends on. Classical computers would take thousands of years. A CRQC could do it in hours.",
-  "RSA-3072":        "Shor's Algorithm: same factoring attack. A slightly larger quantum computer is needed but it's the same vulnerability.",
-  "RSA-4096":        "Shor's Algorithm: still broken by quantum, just requires more qubits.",
-  "ECDSA-P256":      "Shor's Algorithm: the same math that breaks ECDH key exchange also breaks ECDSA signatures. An attacker could forge the website's certificate.",
-  "ECDSA-P384":      "Shor's Algorithm: same signature forgery attack on a larger curve.",
-  "RSA-PKCS1-2048":  "Shor's Algorithm: RSA security depends on the difficulty of factoring large numbers. Shor's algorithm solves this exponentially faster than any classical computer — a 2048-bit RSA key could be broken in hours on a mature CRQC.",
-  "RSA-PKCS1-3072":  "Shor's Algorithm: same factoring attack as RSA-2048. The larger key needs a bigger quantum computer but is still broken by the same algorithm.",
-  "RSA-PKCS1-4096":  "Shor's Algorithm: same factoring attack. 4096-bit RSA is commonly used by root CAs because of its long validity period — but it is still quantum-vulnerable.",
-  "RSA-PSS-2048":    "Shor's Algorithm: the PSS padding scheme is an improvement over PKCS1 padding for classical security, but it doesn't help against quantum factoring of the RSA modulus.",
-  "Ed25519":         "Shor's Algorithm: Ed25519 is based on elliptic curves, susceptible to the same attack.",
-  "AES-128-GCM":     "Grover's Algorithm: quantum search halves effective key length from 128 bits to 64 bits. Not immediately catastrophic but below recommended thresholds.",
-  "AES-128-CBC":     "Grover's Algorithm: 64-bit effective post-quantum security. The mode (CBC) is also outdated.",
-  "SHA-256":         "Grover's Algorithm: halves effective security from 256 to 128 bits. Still considered safe but SHA-384 provides more headroom.",
-  "SHA-1":           "Already broken classically — collision attacks exist without needing a quantum computer.",
-  "TLS-1.2":         "Protocol limitation: TLS 1.2's architecture cannot negotiate quantum-safe key exchange groups. The server must upgrade to TLS 1.3.",
-  "TLS-1.1":         "Protocol obsolete — deprecated by IETF in 2021. Known weaknesses beyond quantum.",
-  "TLS-1.0":         "Protocol obsolete — deprecated by IETF in 2021. Known weaknesses beyond quantum.",
+  "X25519":         "Shor's Algorithm: a quantum computer solves the elliptic curve discrete logarithm in polynomial time instead of exponential time.",
+  "ECDH-P256":      "Shor's Algorithm: solves the discrete logarithm on the P-256 elliptic curve. A mature quantum computer could do it in hours.",
+  "ECDH-P384":      "Shor's Algorithm: same attack, just needs a slightly larger quantum processor.",
+  "ECDH-P521":      "Shor's Algorithm: needs more qubits than P-256, but still broken by a sufficiently powerful quantum computer.",
+  "RSA-2048":       "Shor's Algorithm: factors the large numbers RSA security depends on. A CRQC could do it in hours.",
+  "RSA-3072":       "Shor's Algorithm: same factoring attack. A slightly larger quantum computer is needed.",
+  "RSA-4096":       "Shor's Algorithm: still broken by quantum, just requires more qubits.",
+  "ECDSA-P256":     "Shor's Algorithm: the same math that breaks ECDH key exchange also breaks ECDSA signatures. An attacker could forge the website's certificate.",
+  "ECDSA-P384":     "Shor's Algorithm: same signature forgery attack on a larger curve.",
+  "RSA-PKCS1-2048": "Shor's Algorithm: RSA security depends on the difficulty of factoring large numbers. A 2048-bit RSA key could be broken in hours on a mature CRQC.",
+  "RSA-PKCS1-3072": "Shor's Algorithm: same factoring attack as RSA-2048. The larger key needs a bigger quantum computer.",
+  "RSA-PKCS1-4096": "Shor's Algorithm: same factoring attack. 4096-bit RSA is commonly used by root CAs because of its long validity period — but still quantum-vulnerable.",
+  "RSA-PSS-2048":   "Shor's Algorithm: PSS padding doesn't help against quantum factoring of the RSA modulus.",
+  "Ed25519":        "Shor's Algorithm: Ed25519 is based on elliptic curves, susceptible to the same attack.",
+  "AES-128-GCM":    "Grover's Algorithm: quantum search halves effective key length from 128 bits to 64 bits.",
+  "AES-128-CBC":    "Grover's Algorithm: 64-bit effective post-quantum security. The mode (CBC) is also outdated.",
+  "SHA-256":        "Grover's Algorithm: halves effective security from 256 to 128 bits. Still considered safe but SHA-384 provides more headroom.",
+  "SHA-1":          "Already broken classically — collision attacks exist without needing a quantum computer.",
+  "TLS-1.2":        "Protocol limitation: TLS 1.2's architecture cannot negotiate quantum-safe key exchange groups.",
+  "TLS-1.1":        "Protocol obsolete — deprecated by IETF in 2021.",
+  "TLS-1.0":        "Protocol obsolete — deprecated by IETF in 2021.",
 };
 
 const ALGO_WHAT_TO_DO = {
-  "X25519":          "Ask your hosting provider or CDN to enable TLS 1.3 with X25519+ML-KEM-768 hybrid key exchange. Cloudflare, Google, and AWS already support this.",
-  "ECDH-P256":       "Enable TLS 1.3 and configure ML-KEM hybrid key exchange groups on the server.",
-  "ECDH-P384":       "Same as P-256 — upgrade to TLS 1.3 with ML-KEM hybrid groups.",
-  "RSA-2048":        "If used for key exchange: migrate to TLS 1.3. If on a certificate: reissue with ECDSA or ML-DSA key.",
-  "ECDSA-P256":      "When certificate authorities begin issuing ML-DSA certificates (in progress), reissue your certificate with an ML-DSA-44 key.",
-  "ECDSA-P384":      "Reissue certificate with ML-DSA-65 when CA support is available.",
-  "RSA-PKCS1-2048":  "Reissue this certificate with an ML-DSA-65 signature when your CA supports it. Most major CAs are planning this rollout before 2028.",
-  "RSA-PKCS1-3072":  "Reissue this certificate with an ML-DSA-65 signature when your CA supports it.",
-  "RSA-PKCS1-4096":  "Reissue this certificate with an ML-DSA-87 signature when your CA supports it.",
-  "RSA-PSS-2048":    "Reissue this certificate with an ML-DSA-65 signature when your CA supports it.",
-  "Ed25519":         "Reissue certificate with ML-DSA-44 signature.",
-  "AES-128-GCM":     "Configure server cipher suite preferences to prioritise AES-256-GCM or ChaCha20-Poly1305.",
-  "SHA-256":         "Acceptable for now — move toward SHA-384 when issuing new certificates.",
-  "SHA-1":           "Replace immediately — this is broken regardless of quantum computers.",
-  "TLS-1.2":         "Enable TLS 1.3 on your web server (Apache, Nginx, IIS all support it). Configure ML-KEM key exchange groups.",
-  "TLS-1.1":         "Disable TLS 1.1 immediately. Enable TLS 1.3.",
-  "TLS-1.0":         "Disable TLS 1.0 immediately. Enable TLS 1.3.",
+  "X25519":         "Ask your hosting provider or CDN to enable TLS 1.3 with X25519+ML-KEM-768 hybrid key exchange. Cloudflare, Google, and AWS already support this.",
+  "ECDH-P256":      "Enable TLS 1.3 and configure ML-KEM hybrid key exchange groups on the server.",
+  "ECDH-P384":      "Same as P-256 — upgrade to TLS 1.3 with ML-KEM hybrid groups.",
+  "RSA-2048":       "If used for key exchange: migrate to TLS 1.3. If on a certificate: reissue with ECDSA or ML-DSA key.",
+  "ECDSA-P256":     "When certificate authorities begin issuing ML-DSA certificates (in progress), reissue your certificate with an ML-DSA-44 key.",
+  "ECDSA-P384":     "Reissue certificate with ML-DSA-65 when CA support is available.",
+  "RSA-PKCS1-2048": "Reissue this certificate with an ML-DSA-65 signature when your CA supports it. Most major CAs are planning this rollout before 2028.",
+  "RSA-PKCS1-3072": "Reissue this certificate with an ML-DSA-65 signature when your CA supports it.",
+  "RSA-PKCS1-4096": "Reissue this certificate with an ML-DSA-87 signature when your CA supports it.",
+  "RSA-PSS-2048":   "Reissue this certificate with an ML-DSA-65 signature when your CA supports it.",
+  "Ed25519":        "Reissue certificate with ML-DSA-44 signature.",
+  "AES-128-GCM":    "Configure server cipher suite preferences to prioritise AES-256-GCM or ChaCha20-Poly1305.",
+  "SHA-256":        "Acceptable for now — move toward SHA-384 when issuing new certificates.",
+  "SHA-1":          "Replace immediately — this is broken regardless of quantum computers.",
+  "TLS-1.2":        "Enable TLS 1.3 on your web server (Apache, Nginx, IIS all support it). Configure ML-KEM key exchange groups.",
+  "TLS-1.1":        "Disable TLS 1.1 immediately. Enable TLS 1.3.",
+  "TLS-1.0":        "Disable TLS 1.0 immediately. Enable TLS 1.3.",
 };
 
+// Paper theme threat colors — desaturated, ink-like
 function threatStyle(threat) {
   const map = {
-    CRITICAL: { color:"#ff3355", bg:"rgba(255,51,85,.1)",  border:"rgba(255,51,85,.25)",  emoji:"🔴", label:"Critical" },
-    HIGH:     { color:"#ff6b35", bg:"rgba(255,107,53,.1)", border:"rgba(255,107,53,.25)", emoji:"🟠", label:"High Risk" },
-    MEDIUM:   { color:"#ffd60a", bg:"rgba(255,214,10,.1)", border:"rgba(255,214,10,.25)", emoji:"🟡", label:"Medium" },
-    LOW:      { color:"#2ecc71", bg:"rgba(46,204,113,.1)", border:"rgba(46,204,113,.25)", emoji:"🟢", label:"Low Risk" },
-    NONE:     { color:"#3b82f6", bg:"rgba(59,130,246,.1)", border:"rgba(59,130,246,.25)", emoji:"🔵", label:"Safe" },
-    UNKNOWN:  { color:"#5a6490", bg:"rgba(90,100,144,.1)", border:"rgba(90,100,144,.25)", emoji:"⚪", label:"Unknown" },
+    CRITICAL: { color:"#9b1c1c", bg:"#fef2f2",  border:"#fca5a5",  emoji:"🔴", label:"Critical" },
+    HIGH:     { color:"#9a3412", bg:"#fff7ed",   border:"#fdba74",  emoji:"🟠", label:"High Risk" },
+    MEDIUM:   { color:"#92400e", bg:"#fffbeb",   border:"#fcd34d",  emoji:"🟡", label:"Medium" },
+    LOW:      { color:"#14532d", bg:"#f0fdf4",   border:"#86efac",  emoji:"🟢", label:"Low Risk" },
+    NONE:     { color:"#1e3a5f", bg:"#eff6ff",   border:"#93c5fd",  emoji:"🔵", label:"Safe" },
+    UNKNOWN:  { color:"#7a6f60", bg:"#faf7f2",   border:"#c8bfaa",  emoji:"⚪", label:"Unknown" },
   };
   return map[threat] || map.UNKNOWN;
 }
 
 function verdictFor(score, hndl, imp) {
   if (score >= 5 && !hndl && !imp)
-    return { emoji:"✅", color:"#2ecc71", title:"Quantum-Safe",
-      bg:"rgba(46,204,113,.08)", border:"rgba(46,204,113,.2)",
+    return { emoji:"✅", color:"#14532d", title:"Quantum-Safe",
+      bg:"#f0fdf4", border:"#86efac",
       plain:"This site uses the latest quantum-safe algorithms. Traffic is protected against both current and future quantum computer attacks." };
   if (!hndl && score >= 4)
-    return { emoji:"🛡️", color:"#3b82f6", title:"Mostly Protected",
-      bg:"rgba(59,130,246,.08)", border:"rgba(59,130,246,.2)",
+    return { emoji:"🛡️", color:"#1e3a5f", title:"Mostly Protected",
+      bg:"#eff6ff", border:"#93c5fd",
       plain:"The connection itself is quantum-safe — traffic recorded today cannot be decrypted by future quantum computers. However, the certificate still uses classical algorithms that could eventually be forged." };
   if (hndl)
-    return { emoji:"⚠️", color:"#ff6b35", title:"Harvest Risk — Upgrade Needed",
-      bg:"rgba(255,107,53,.08)", border:"rgba(255,107,53,.2)",
+    return { emoji:"⚠️", color:"#9a3412", title:"Harvest Risk — Upgrade Needed",
+      bg:"#fff7ed", border:"#fdba74",
       plain:"Encrypted traffic from this site could be recorded today and decrypted in the future when quantum computers arrive. The site needs to upgrade its key exchange to quantum-safe algorithms." };
   if (score <= 1)
-    return { emoji:"🚨", color:"#ff3355", title:"Critical — Highly Vulnerable",
-      bg:"rgba(255,51,85,.08)", border:"rgba(255,51,85,.2)",
+    return { emoji:"🚨", color:"#9b1c1c", title:"Critical — Highly Vulnerable",
+      bg:"#fef2f2", border:"#fca5a5",
       plain:"This site uses outdated or deprecated encryption. It is extremely vulnerable to both classical and future quantum attacks." };
-  return { emoji:"⚠️", color:"#ffd60a", title:"Partial Protection",
-    bg:"rgba(255,214,10,.08)", border:"rgba(255,214,10,.2)",
+  return { emoji:"⚠️", color:"#92400e", title:"Partial Protection",
+    bg:"#fffbeb", border:"#fcd34d",
     plain:"Mixed security — some algorithms are acceptable but others need upgrading to be quantum-safe." };
 }
 
-function setDomain(d) { document.getElementById("domain-input").value = d; }
-
 function pick(d) {
   document.getElementById("domain-input").value = d;
-  // close the examples panel
-  const body = document.getElementById("examples-body");
-  const btn  = document.querySelector(".examples-toggle");
-  if (body) body.classList.remove("open");
-  if (btn)  btn.querySelector(".arr").textContent = "▶";
   document.getElementById("domain-input").focus();
 }
 
@@ -464,7 +720,7 @@ async function scan() {
 
   document.getElementById("scan-btn").disabled = true;
   document.getElementById("results").innerHTML = "";
-  setStatus(`Connecting to <strong>${domain}</strong> — this may take up to 30 seconds if the server was sleeping…`, true);
+  setStatus(`Connecting to <em>${domain}</em> — this may take up to 30 seconds if the server was sleeping…`, true);
 
   try {
     const res  = await fetch(`${API_BASE}/scan?domain=${encodeURIComponent(domain)}&port=${port}`);
@@ -474,14 +730,14 @@ async function scan() {
       document.getElementById("results").innerHTML = `<div class="error-box">✕ ${data.error}</div>`;
       return;
     }
-    setStatus(`Scan complete — ${domain}`);
+    setStatus(`Inspection complete — ${domain}`);
     render(data, domain, port);
   } catch(e) {
     setStatus("");
     document.getElementById("results").innerHTML =
       `<div class="error-box">✕ Could not reach the scanner API.<br><br>
       <strong>If this is your first scan in a while:</strong> the free server sleeps after 15 minutes of inactivity.
-      Visit <a href="${API_BASE}/health" target="_blank" style="color:var(--blue)">${API_BASE}/health</a> in a new tab to wake it up, wait 10 seconds, then try again.<br><br>
+      Visit <a href="${API_BASE}/health" target="_blank">${API_BASE}/health</a> in a new tab to wake it up, wait 10 seconds, then try again.<br><br>
       Error: ${e.message}</div>`;
   } finally {
     document.getElementById("scan-btn").disabled = false;
@@ -500,7 +756,7 @@ function render(data, domain, port) {
 
   // Verdict
   html += `
-  <div class="verdict-card fade-up" style="background:${v.bg};border-color:${v.border}">
+  <div class="verdict-card fade-up" style="background:${v.bg};border-color:${v.border};border-left-color:${v.color}">
     <div class="verdict-emoji">${v.emoji}</div>
     <div>
       <div class="verdict-title" style="color:${v.color}">${v.title}</div>
@@ -509,14 +765,14 @@ function render(data, domain, port) {
     </div>
   </div>`;
 
-  // SECTION 1: Key Exchange
+  // Section 1
   const kexFindings = findings.filter(f => f.category==="Key Exchange" || f.category==="Protocol");
   html += `
   <div class="section fade-up">
     <div class="section-header">
-      <div class="section-icon" style="background:rgba(59,130,246,.15)">🔑</div>
+      <div class="section-numeral">I</div>
       <div>
-        <div class="section-title">Part 1 — Session Privacy (Key Exchange)</div>
+        <div class="section-title">Session Privacy — Key Exchange</div>
         <div class="section-desc">
           When you open a website, your browser and the server agree on a secret key to encrypt your session.
           This is the <strong>key exchange</strong>. It determines whether traffic recorded <em>today</em>
@@ -528,18 +784,18 @@ function render(data, domain, port) {
     ${kexFindings.map(f => findingCard(f)).join("")}
   </div>`;
 
-  // SECTION 2: Certificate
+  // Section 2
   const certFindings = findings.filter(f => f.category==="Signature" || f.category==="Hash");
   html += `
   <div class="section fade-up">
     <div class="section-header">
-      <div class="section-icon" style="background:rgba(20,184,166,.15)">📜</div>
+      <div class="section-numeral">II</div>
       <div>
-        <div class="section-title">Part 2 — Identity (Certificate & Signature)</div>
+        <div class="section-title">Identity — Certificate & Signature</div>
         <div class="section-desc">
           A certificate is the website's digital passport — it proves you're talking to the real server, not an impostor.
           A trusted authority signs this certificate. Breaking the signature would let an attacker
-          <strong>impersonate the website</strong>. Unlike key exchange, this cannot be attacked retroactively — 
+          <strong>impersonate the website</strong>. Unlike key exchange, this cannot be attacked retroactively —
           only when a quantum computer is actively running.
         </div>
       </div>
@@ -548,15 +804,15 @@ function render(data, domain, port) {
     ${certFindings.map(f => findingCard(f, meta.cert_chain)).join("")}
   </div>`;
 
-  // SECTION 3: Encryption
+  // Section 3
   const symFindings = findings.filter(f => f.category==="Symmetric");
   if (symFindings.length) {
     html += `
     <div class="section fade-up">
       <div class="section-header">
-        <div class="section-icon" style="background:rgba(46,204,113,.12)">🔒</div>
+        <div class="section-numeral">III</div>
         <div>
-          <div class="section-title">Part 3 — Data Encryption (Symmetric Cipher)</div>
+          <div class="section-title">Data Encryption — Symmetric Cipher</div>
           <div class="section-desc">
             After the key is agreed, all data is encrypted using a symmetric cipher (like AES).
             Quantum computers use Grover's algorithm to weaken these — but 256-bit keys have enough headroom to stay safe.
@@ -567,11 +823,11 @@ function render(data, domain, port) {
     </div>`;
   }
 
-  // SECTION 4: Risk + Timeline
-  html += `<hr class="divider">
+  // Timeline
+  html += `<hr class="divider-heavy">
   <div class="section fade-up">
     <div class="section-header">
-      <div class="section-icon" style="background:rgba(255,107,53,.12)">⏱</div>
+      <div class="section-numeral" style="font-size:22px">⏱</div>
       <div>
         <div class="section-title">When does the danger actually kick in?</div>
         <div class="section-desc">Key exchange and certificate risks have different timelines.</div>
@@ -580,8 +836,8 @@ function render(data, domain, port) {
 
   if (hndl_risk) {
     html += `
-    <div class="action-card" style="border-color:rgba(255,107,53,.3);background:rgba(255,107,53,.06)">
-      <div class="action-title" style="color:#ff6b35">🔴 Harvest Now, Decrypt Later — The Clock is Already Running</div>
+    <div class="action-card" style="border-left-color:#9a3412;background:#fff7ed">
+      <div class="action-title" style="color:#9a3412">🔴 Harvest Now, Decrypt Later — The Clock is Already Running</div>
       <div class="action-body">
         Because this site uses classical key exchange, adversaries can <strong>record your encrypted session right now</strong>
         and store it indefinitely. When a sufficiently powerful quantum computer arrives, they decrypt it.
@@ -600,10 +856,10 @@ function render(data, domain, port) {
       </div>
       <div class="timeline">
         <div class="tl-safe" style="width:0%"></div>
-        <div class="tl-danger" style="background:#ff6b35"></div>
+        <div class="tl-danger" style="background:#9a3412"></div>
       </div>
-      <div class="tl-labels"><span>2020 (harvest begins)</span><span>▲ NOW (2026)</span><span>2030–35 (CRQC)</span></div>
-      <div class="tl-note">🔴 Harvest risk is active today — traffic being recorded now could be decrypted when CRQCs arrive</div>
+      <div class="tl-labels"><span>2020 (harvest begins)</span><span>▲ Now (2026)</span><span>2030–35 (CRQC)</span></div>
+      <div class="tl-note">🔴 Harvest risk is active today — traffic recorded now could be decrypted when CRQCs arrive</div>
     </div>`;
   }
 
@@ -612,14 +868,12 @@ function render(data, domain, port) {
       ? `<br><br><strong>Why are there ${impersonation_count} findings for certificates?</strong><br>
          This is <em>one shared problem</em>, not ${impersonation_count} independent risks. Every website's
          identity depends on a chain of trust — the leaf cert is signed by an intermediate CA, which is
-         signed by a root CA. All links in the chain must be quantum-safe for the chain to be secure.
-         Currently <strong>none</strong> of them are, because no CA has yet deployed ML-DSA.
-         This is an industry-wide transition, not a problem unique to this site.<br><br>
+         signed by a root CA. All links in the chain must be quantum-safe for the chain to be secure.<br><br>
          <strong>Chain inspected:</strong><br>${chainBreakdown}`
       : "";
     html += `
-    <div class="action-card" style="border-color:rgba(255,214,10,.3);background:rgba(255,214,10,.05)">
-      <div class="action-title" style="color:#ffd60a">🟡 Certificate Trust Chain — Future Forgery Risk, Not Immediate</div>
+    <div class="action-card" style="border-left-color:#92400e;background:#fffbeb">
+      <div class="action-title" style="color:#92400e">🟡 Certificate Trust Chain — Future Forgery Risk, Not Immediate</div>
       <div class="action-body">
         <strong>What this means:</strong> Every HTTPS website has a "chain of trust" — like a chain of notarised
         documents. Your browser trusts the website because a Certificate Authority (CA) vouched for it,
@@ -627,8 +881,7 @@ function render(data, domain, port) {
         allowing an attacker to impersonate the website.
         <br><br>
         <strong>Crucially:</strong> this attack requires an active CRQC <em>at the time of the attack</em>.
-        It cannot be used to expose past sessions — that is the key exchange problem (HNDL).
-        Past sessions are <strong>safe from this specific risk</strong>.
+        It cannot be used to expose past sessions. Past sessions are <strong>safe from this specific risk</strong>.
         <br><br>
         <strong>What the timeline looks like:</strong><br>
         • ✅ Safe today — no quantum computer capable of this exists yet<br>
@@ -639,38 +892,37 @@ function render(data, domain, port) {
       </div>
       <div class="timeline">
         <div class="tl-safe" style="width:30%"></div>
-        <div class="tl-danger" style="background:#ffd60a"></div>
+        <div class="tl-danger" style="background:#92400e"></div>
       </div>
-      <div class="tl-labels"><span>2020</span><span>▲ NOW (2026)</span><span>2030–35 (CRQC)</span></div>
+      <div class="tl-labels"><span>2020</span><span>▲ Now (2026)</span><span>2030–35 (CRQC)</span></div>
       <div class="tl-note">🟡 Safe today — risk activates only when a CRQC is actively running</div>
     </div>`;
   }
 
   if (!hndl_risk && !impersonation_risk) {
     html += `
-    <div class="action-card" style="border-color:rgba(46,204,113,.3);background:rgba(46,204,113,.06)">
-      <div class="action-title" style="color:#2ecc71">✅ No High-Priority Quantum Vulnerabilities Found</div>
+    <div class="action-card" style="border-left-color:#14532d;background:#f0fdf4">
+      <div class="action-title" style="color:#14532d">✅ No High-Priority Quantum Vulnerabilities Found</div>
       <div class="action-body">
         This site is using modern quantum-resistant algorithms for key exchange and has no immediately
         critical signature vulnerabilities. Continue monitoring as NIST standards and CA infrastructure evolve.
       </div>
     </div>`;
   }
-
   html += `</div>`;
 
-  // HSTS / headers
+  // Headers
   if (meta.hsts !== undefined) {
     html += `
     <div class="section fade-up">
       <div class="section-header">
-        <div class="section-icon" style="background:rgba(90,100,144,.15)">🌐</div>
+        <div class="section-numeral" style="font-size:18px">🌐</div>
         <div><div class="section-title">Other Security Signals</div></div>
       </div>
       <div class="cert-meta">
         <div class="cert-row">
           <span class="cert-key">HSTS</span>
-          <span class="cert-val" style="color:${meta.hsts?'#2ecc71':'#ff6b35'}">
+          <span class="cert-val" style="color:${meta.hsts?'#14532d':'#9a3412'}">
             ${meta.hsts ? "✓ Enabled — browsers forced to always use HTTPS" : "✗ Not set — browsers may connect over unencrypted HTTP"}
           </span>
         </div>
@@ -684,98 +936,71 @@ function render(data, domain, port) {
 }
 
 function findingCard(f, chain) {
-  const s   = threatStyle(f.threat);
-  const id  = "d" + Math.random().toString(36).slice(2,9);
-  const plain    = ALGO_PLAIN[f.algo]        || f.context || "";
-  const howQ     = ALGO_HOW_QUANTUM[f.algo]  || "";
+  const s  = threatStyle(f.threat);
+  const id = "d" + Math.random().toString(36).slice(2,9);
+  const plain   = ALGO_PLAIN[f.algo]       || f.context || "";
+  const howQ    = ALGO_HOW_QUANTUM[f.algo] || "";
 
-  // Role-aware what-to-do: intermediate and root have different owners
   let whatToDo = ALGO_WHAT_TO_DO[f.algo] || f.migrate || "";
   const ctx = f.context || "";
 
-  // Map technical CA names → plain English operator names
-  // Covers ~95% of real-world certs
   const CA_OPERATORS = {
-    // Google Trust Services
-    "WR2": "Google (WR2)", "WR3": "Google (WR3)", "WE1": "Google (WE1)", "WE2": "Google (WE2)",
-    "GTS CA 1C3": "Google (GTS CA 1C3)", "GTS CA 1D4": "Google (GTS CA 1D4)",
-    "GTS CA 1P5": "Google (GTS CA 1P5)",
-    "GTS Root R1": "Google Trust Services (Root)", "GTS Root R2": "Google Trust Services (Root)",
-    "GTS Root R3": "Google Trust Services (Root)", "GTS Root R4": "Google Trust Services (Root)",
-    // Let's Encrypt / ISRG
-    "R3": "Let\'s Encrypt (R3)", "R10": "Let\'s Encrypt (R10)", "R11": "Let\'s Encrypt (R11)",
-    "E1": "Let\'s Encrypt (E1)", "E2": "Let\'s Encrypt (E2)",
-    "ISRG Root X1": "ISRG / Let\'s Encrypt (Root)", "ISRG Root X2": "ISRG / Let\'s Encrypt (Root — ECDSA)",
-    // DigiCert
-    "DigiCert Global Root CA": "DigiCert (Root)",
-    "DigiCert Global Root G2": "DigiCert (Root G2)",
-    "DigiCert Global Root G3": "DigiCert (Root G3 — ECDSA)",
-    "DigiCert SHA2 Secure Server CA": "DigiCert (SHA-2 Intermediate)",
-    "DigiCert TLS RSA SHA256 2020 CA1": "DigiCert (TLS Intermediate)",
-    "DigiCert TLS Hybrid ECC SHA384 2020 CA1": "DigiCert (ECDSA Intermediate)",
-    // Sectigo / Comodo
-    "Sectigo RSA Domain Validation Secure Server CA": "Sectigo (DV Intermediate)",
-    "Sectigo ECC Domain Validation Secure Server CA": "Sectigo (ECC Intermediate)",
-    "COMODO RSA Certification Authority": "Sectigo / Comodo (Root)",
-    "COMODO ECC Certification Authority": "Sectigo / Comodo (ECC Root)",
-    "AAA Certificate Services": "Sectigo (AAA Root)",
-    // Amazon / AWS
-    "Amazon RSA 2048 M01": "Amazon (AWS Certificate Manager)",
-    "Amazon RSA 2048 M02": "Amazon (AWS Certificate Manager)",
-    "Amazon ECDSA 256 M01": "Amazon (AWS — ECDSA)",
-    "Amazon Root CA 1": "Amazon (Root CA 1)",
-    "Amazon Root CA 2": "Amazon (Root CA 2)",
-    "Amazon Root CA 3": "Amazon (Root CA 3 — ECDSA)",
-    "Amazon Root CA 4": "Amazon (Root CA 4 — ECDSA)",
-    "Starfield Services Root Certificate Authority - G2": "Amazon / Starfield (Root)",
-    // Cloudflare
-    "Cloudflare Inc ECC CA-3": "Cloudflare (ECC Intermediate)",
-    "Cloudflare Inc RSA CA-2": "Cloudflare (RSA Intermediate)",
-    // Microsoft
-    "Microsoft Azure TLS Issuing CA 01": "Microsoft (Azure TLS CA)",
-    "Microsoft Azure TLS Issuing CA 02": "Microsoft (Azure TLS CA)",
-    "Microsoft Azure TLS Issuing CA 05": "Microsoft (Azure TLS CA)",
-    "Microsoft Azure TLS Issuing CA 06": "Microsoft (Azure TLS CA)",
-    "Microsoft RSA TLS CA 01": "Microsoft (RSA TLS Intermediate)",
-    "Microsoft RSA TLS CA 02": "Microsoft (RSA TLS Intermediate)",
-    "Baltimore CyberTrust Root": "Microsoft / DigiCert (Baltimore Root)",
-    "DigiCert Global G2 TLS RSA SHA256 2020 CA1": "DigiCert (Microsoft-used Intermediate)",
-    // GlobalSign
-    "GlobalSign RSA OV SSL CA 2018": "GlobalSign (OV Intermediate)",
-    "GlobalSign ECC OV SSL CA 2018": "GlobalSign (ECC Intermediate)",
-    "GlobalSign Atlas R3 DV TLS CA 2024 Q2": "GlobalSign (Atlas DV Intermediate)",
-    "GlobalSign Root CA": "GlobalSign (Root)",
-    "GlobalSign Root CA - R3": "GlobalSign (Root R3)",
-    "GlobalSign Root CA - R6": "GlobalSign (Root R6 — ECDSA)",
-    // Entrust
-    "Entrust Certification Authority - L1K": "Entrust (L1K Intermediate)",
-    "Entrust Certification Authority - L1M": "Entrust (L1M Intermediate)",
-    "Entrust Root Certification Authority - G2": "Entrust (Root G2)",
-    "Entrust Root Certification Authority - G4": "Entrust (Root G4 — ECDSA)",
-    // GoDaddy
-    "Go Daddy Secure Certificate Authority - G2": "GoDaddy (Intermediate)",
-    "Go Daddy Root Certificate Authority - G2": "GoDaddy (Root)",
-    // QuoVadis / DigiCert
-    "QuoVadis Root CA 2 G3": "QuoVadis / DigiCert (Root)",
-    "QuoVadis TLS-B CA G2": "QuoVadis / DigiCert (Intermediate)",
-    // IdenTrust / DST
-    "DST Root CA X3": "IdenTrust (DST Root — expired 2021, legacy)",
-    "IdenTrust Commercial Root CA 1": "IdenTrust (Root)",
-    // Buypass
-    "Buypass Class 2 Root CA": "Buypass (Root — Norway)",
-    // T-Systems / Deutsche Telekom
-    "T-TeleSec GlobalRoot Class 2": "Deutsche Telekom (T-TeleSec Root)",
-    // SECOM / Japan
-    "Security Communication RootCA2": "SECOM Trust Systems (Japan Root)",
-    // SwissSign
-    "SwissSign Gold CA - G2": "SwissSign (Switzerland Root)",
-    // Certum / Asseco
-    "Certum Trusted Network CA 2": "Certum / Asseco (Poland Root)",
-    // Network Solutions
-    "Network Solutions OV Server CA 2": "Network Solutions (Intermediate)",
+    "WR2":"Google (WR2)","WR3":"Google (WR3)","WE1":"Google (WE1)","WE2":"Google (WE2)",
+    "GTS CA 1C3":"Google (GTS CA 1C3)","GTS CA 1D4":"Google (GTS CA 1D4)","GTS CA 1P5":"Google (GTS CA 1P5)",
+    "GTS Root R1":"Google Trust Services (Root)","GTS Root R2":"Google Trust Services (Root)",
+    "GTS Root R3":"Google Trust Services (Root)","GTS Root R4":"Google Trust Services (Root)",
+    "R3":"Let's Encrypt (R3)","R10":"Let's Encrypt (R10)","R11":"Let's Encrypt (R11)",
+    "E1":"Let's Encrypt (E1)","E2":"Let's Encrypt (E2)",
+    "ISRG Root X1":"ISRG / Let's Encrypt (Root)","ISRG Root X2":"ISRG / Let's Encrypt (Root — ECDSA)",
+    "DigiCert Global Root CA":"DigiCert (Root)","DigiCert Global Root G2":"DigiCert (Root G2)",
+    "DigiCert Global Root G3":"DigiCert (Root G3 — ECDSA)",
+    "DigiCert SHA2 Secure Server CA":"DigiCert (SHA-2 Intermediate)",
+    "DigiCert TLS RSA SHA256 2020 CA1":"DigiCert (TLS Intermediate)",
+    "DigiCert EV RSA CA G2":"DigiCert (EV Intermediate)",
+    "DigiCert TLS Hybrid ECC SHA384 2020 CA1":"DigiCert (ECDSA Intermediate)",
+    "Sectigo RSA Domain Validation Secure Server CA":"Sectigo (DV Intermediate)",
+    "Sectigo ECC Domain Validation Secure Server CA":"Sectigo (ECC Intermediate)",
+    "COMODO RSA Certification Authority":"Sectigo / Comodo (Root)",
+    "COMODO ECC Certification Authority":"Sectigo / Comodo (ECC Root)",
+    "AAA Certificate Services":"Sectigo (AAA Root)",
+    "Amazon RSA 2048 M01":"Amazon (AWS Certificate Manager)",
+    "Amazon RSA 2048 M02":"Amazon (AWS Certificate Manager)",
+    "Amazon ECDSA 256 M01":"Amazon (AWS — ECDSA)",
+    "Amazon Root CA 1":"Amazon (Root CA 1)","Amazon Root CA 2":"Amazon (Root CA 2)",
+    "Amazon Root CA 3":"Amazon (Root CA 3 — ECDSA)","Amazon Root CA 4":"Amazon (Root CA 4 — ECDSA)",
+    "Starfield Services Root Certificate Authority - G2":"Amazon / Starfield (Root)",
+    "Cloudflare Inc ECC CA-3":"Cloudflare (ECC Intermediate)",
+    "Cloudflare Inc RSA CA-2":"Cloudflare (RSA Intermediate)",
+    "Microsoft Azure TLS Issuing CA 01":"Microsoft (Azure TLS CA)",
+    "Microsoft Azure TLS Issuing CA 02":"Microsoft (Azure TLS CA)",
+    "Microsoft Azure TLS Issuing CA 05":"Microsoft (Azure TLS CA)",
+    "Microsoft Azure TLS Issuing CA 06":"Microsoft (Azure TLS CA)",
+    "Microsoft RSA TLS CA 01":"Microsoft (RSA TLS Intermediate)",
+    "Microsoft RSA TLS CA 02":"Microsoft (RSA TLS Intermediate)",
+    "Baltimore CyberTrust Root":"Microsoft / DigiCert (Baltimore Root)",
+    "GlobalSign RSA OV SSL CA 2018":"GlobalSign (OV Intermediate)",
+    "GlobalSign ECC OV SSL CA 2018":"GlobalSign (ECC Intermediate)",
+    "GlobalSign Atlas R3 DV TLS CA 2024 Q2":"GlobalSign (Atlas DV Intermediate)",
+    "GlobalSign Root CA":"GlobalSign (Root)","GlobalSign Root CA - R3":"GlobalSign (Root R3)",
+    "GlobalSign Root CA - R6":"GlobalSign (Root R6 — ECDSA)",
+    "Entrust Certification Authority - L1K":"Entrust (L1K Intermediate)",
+    "Entrust Certification Authority - L1M":"Entrust (L1M Intermediate)",
+    "Entrust Root Certification Authority - G2":"Entrust (Root G2)",
+    "Entrust Root Certification Authority - G4":"Entrust (Root G4 — ECDSA)",
+    "Go Daddy Secure Certificate Authority - G2":"GoDaddy (Intermediate)",
+    "Go Daddy Root Certificate Authority - G2":"GoDaddy (Root)",
+    "QuoVadis Root CA 2 G3":"QuoVadis / DigiCert (Root)",
+    "QuoVadis TLS-B CA G2":"QuoVadis / DigiCert (Intermediate)",
+    "DST Root CA X3":"IdenTrust (DST Root — expired 2021, legacy)",
+    "IdenTrust Commercial Root CA 1":"IdenTrust (Root)",
+    "Buypass Class 2 Root CA":"Buypass (Root — Norway)",
+    "T-TeleSec GlobalRoot Class 2":"Deutsche Telekom (T-TeleSec Root)",
+    "Security Communication RootCA2":"SECOM Trust Systems (Japan Root)",
+    "SwissSign Gold CA - G2":"SwissSign (Switzerland Root)",
+    "Certum Trusted Network CA 2":"Certum / Asseco (Poland Root)",
+    "Network Solutions OV Server CA 2":"Network Solutions (Intermediate)",
   };
 
-  // Extract CA name from context strings like "Intermediate CA (WR2)" or "Root CA (GTS Root R1)"
   const caNameMatch = ctx.match(/\(([^)]+)\)/);
   const caName = caNameMatch ? caNameMatch[1] : null;
   const caOperator = caName ? (CA_OPERATORS[caName] || caName) : null;
@@ -785,13 +1010,14 @@ function findingCard(f, chain) {
     const caShort = caOperator || "The CA";
     whatToDo = `This certificate belongs to ${caLabel}, not the website owner. ` +
       `${caShort} must migrate their signing infrastructure to ML-DSA — ` +
-      `this is the CA\'s responsibility. Expected before 2030.`;
+      `this is the CA's responsibility. Expected before 2030.`;
   } else if (ctx.includes("Root CA") && f.category === "Signature") {
     const caLabel = caOperator ? `<strong>${caOperator}</strong>` : "this Root CA";
     const caShort = caOperator || "This Root CA";
     whatToDo = `${caLabel} is embedded in every OS and browser, making it the hardest to migrate. ` +
       `${caShort} is planning the transition to ML-DSA now. Expected timeline: 2028–2033.`;
   }
+
   const hasDetails = howQ || whatToDo;
 
   return `
@@ -803,7 +1029,7 @@ function findingCard(f, chain) {
       </div>
       <div style="text-align:right">
         <div class="status-pill" style="color:${s.color};background:${s.bg};border-color:${s.border}">${s.emoji} ${s.label}</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:6px">${f.nist||""}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:5px;font-family:'IBM Plex Mono',monospace">${f.nist||""}</div>
       </div>
     </div>
     ${hasDetails ? `
@@ -826,15 +1052,13 @@ function findingCard(f, chain) {
 function certBlock(c, chain) {
   const exp  = new Date(c.not_after);
   const days = Math.round((exp - new Date()) / 86400000);
-  const col  = days < 30 ? "#ff3355" : days < 90 ? "#ffd60a" : "#2ecc71";
+  const col  = days < 30 ? "#9b1c1c" : days < 90 ? "#92400e" : "#14532d";
 
-  // Build chain diagram
   let chainHtml = "";
   if (chain && chain.length >= 1) {
     const roleIcon  = { leaf:"🌿", intermediate:"🔗", root:"🏛" };
     const roleLabel = { leaf:"Leaf cert (this site)", intermediate:"Intermediate CA (vouches for the leaf)", root:"Root CA (trusted by your OS/browser)" };
 
-    // If no root in chain, append a placeholder row
     const hasRoot = chain.some(c2 => c2.role === "root");
     const displayChain = hasRoot ? chain : [
       ...chain,
@@ -845,18 +1069,22 @@ function certBlock(c, chain) {
       const icon  = roleIcon[c2.role]  || "📄";
       const label = roleLabel[c2.role] || c2.role;
       const isPlaceholder = c2.subject && c2.subject.startsWith("(not provided");
-      const subjectStyle = isPlaceholder ? "color:var(--muted);font-style:italic" : "color:var(--text)";
-      const arrow = i < displayChain.length - 1 ? `<div style="color:var(--muted);font-size:10px;padding:2px 0 2px 10px">↑ signed by</div>` : "";
+      const subjectStyle = isPlaceholder
+        ? "color:var(--muted);font-style:italic"
+        : "color:var(--ink)";
+      const arrow = i < displayChain.length - 1
+        ? `<div style="color:var(--rule2);font-size:10px;padding:2px 0 2px 10px;font-family:'IBM Plex Mono',monospace">↑ signed by</div>`
+        : "";
       return `<div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:3px 0">
-        <span style="font-size:14px">${icon}</span>
-        <span style="font-family:monospace;${subjectStyle}">${c2.subject||"N/A"}</span>
-        <span style="color:var(--muted)">${label}</span>
+        <span style="font-size:13px">${icon}</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;${subjectStyle}">${c2.subject||"N/A"}</span>
+        <span style="color:var(--muted);font-size:10.5px">${label}</span>
       </div>${arrow}`;
-    }).reverse().join(""); // root at top, leaf at bottom
+    }).reverse().join("");
 
     chainHtml = `
-    <div style="margin-top:10px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px">
-      <div style="font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.1em;margin-bottom:8px">TRUST CHAIN (root → leaf)</div>
+    <div style="margin-top:10px;padding:10px 12px;background:var(--paper);border:1px solid var(--rule);border-radius:2px">
+      <div style="font-size:9px;color:var(--muted);font-weight:600;letter-spacing:.18em;margin-bottom:8px;font-family:'IBM Plex Mono',monospace;text-transform:uppercase">Trust Chain (root → leaf)</div>
       ${arrows}
     </div>`;
   }
