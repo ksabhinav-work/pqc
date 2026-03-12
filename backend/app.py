@@ -275,9 +275,7 @@ def parse_cert(der_bytes):
         elif isinstance(pub, ec.EllipticCurvePublicKey):
             curve = pub.curve.name
             findings.append({"ftype":"sig_key","algo":"ECDSA-"+curve_map.get(curve,curve),
-                "context":f"Certificate signing key ({curve})","source":"SubjectPublicKeyInfo"})
-            findings.append({"ftype":"pub_key","algo":"ECDH-"+curve_map.get(curve,curve),
-                "context":f"Subject public key — key exchange role ({curve})","source":"SubjectPublicKeyInfo"})
+                "context":f"Certificate signing key ({curve}) — used for server authentication, not session key exchange","source":"SubjectPublicKeyInfo"})
         elif isinstance(pub, ed25519.Ed25519PublicKey):
             findings.append({"ftype":"sig_key","algo":"Ed25519","context":"Certificate signing key","source":"SubjectPublicKeyInfo"})
         elif isinstance(pub, ed448.Ed448PublicKey):
