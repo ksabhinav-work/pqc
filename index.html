@@ -893,6 +893,26 @@ function render(data, domain, port) {
       <div class="tl-labels"><span>2020 (harvest begins)</span><span>▲ Now (2026)</span><span>2030–35 (CRQC)</span></div>
       <div class="tl-note">🔴 Harvest risk is active today — traffic recorded now could be decrypted when CRQCs arrive</div>
     </div>`;
+  } else {
+    html += `
+    <div class="action-card" style="border-left-color:#14532d;background:#f0fdf4">
+      <div class="action-title" style="color:#14532d">✅ Immune to Harvest Now, Decrypt Later</div>
+      <div class="action-body">
+        This site uses a <strong>quantum-safe key exchange</strong> — meaning traffic recorded today cannot be
+        decrypted by a future quantum computer, no matter how powerful. The "Harvest Now, Decrypt Later"
+        attack does not apply here.
+        <br><br>
+        <strong>Why this matters:</strong> Most websites today are still vulnerable to this attack — adversaries
+        can record encrypted sessions now and store them until quantum computers arrive. This site has already
+        migrated to post-quantum key exchange, putting it ahead of the vast majority of the internet.
+      </div>
+      <div class="timeline">
+        <div class="tl-safe" style="width:100%;background:#86efac"></div>
+        <div class="tl-danger" style="background:#14532d;width:0%"></div>
+      </div>
+      <div class="tl-labels"><span>2020</span><span>▲ Now (2026)</span><span>2030–35 (CRQC)</span></div>
+      <div class="tl-note">✅ Session traffic is safe from harvest attacks — past, present, and future</div>
+    </div>`;
   }
 
   if (impersonation_risk) {
@@ -931,16 +951,7 @@ function render(data, domain, port) {
     </div>`;
   }
 
-  if (!hndl_risk && !impersonation_risk) {
-    html += `
-    <div class="action-card" style="border-left-color:#14532d;background:#f0fdf4">
-      <div class="action-title" style="color:#14532d">✅ No High-Priority Quantum Vulnerabilities Found</div>
-      <div class="action-body">
-        This site is using modern quantum-resistant algorithms for key exchange and has no immediately
-        critical signature vulnerabilities. Continue monitoring as NIST standards and CA infrastructure evolve.
-      </div>
-    </div>`;
-  }
+
   html += `</div>`;
 
   // Headers
