@@ -402,7 +402,7 @@
 
       /* header: SVG left of headline, fills text height */
       header > div { gap: 14px; align-items: stretch; }
-      header svg   { width: 90px !important; height: 100% !important; align-self: stretch; }
+      header svg   { width: auto !important; height: 100% !important; min-width: 80px; }
 
       h1 { font-size: 22px; }
       .header-sub { font-size: 13px; margin-top: 8px; }
@@ -446,9 +446,10 @@
 <header>
   <div style="display:flex;align-items:center;gap:28px">
     <!-- IBM dilution refrigerator — minimalist ink illustration -->
+    <div style="align-self:stretch;display:flex;align-items:stretch;flex-shrink:0">
     <svg viewBox="0 0 110 160" fill="none" xmlns="http://www.w3.org/2000/svg"
          preserveAspectRatio="xMidYMid meet"
-         style="flex-shrink:0;opacity:.75;width:120px;height:175px">
+         style="opacity:.75;width:auto;height:100%;min-width:80px">
       <!-- mounting plate -->
       <rect x="25" y="4" width="60" height="7" rx="2" fill="#c8b99a" stroke="#8a7a62" stroke-width="1"/>
       <!-- hanging rod -->
@@ -491,6 +492,7 @@
       <path d="M77 98 Q82 104 82 112 Q82 128 77 132 L70 134" stroke="#b0a080" stroke-width="1" fill="none" stroke-dasharray="3,2"/>
       <!-- label -->
     </svg>
+    </div>
     <div>
       <h1>Can a quantum computer<br><em>break this website?</em></h1>
       <p class="header-sub">
