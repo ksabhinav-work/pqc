@@ -1336,13 +1336,7 @@ function categorySummary(category, findings, hndl_risk, meta) {
 
       // Direct server config path
       const server_block =
-        `<strong>On your own server/load balancer (for entities running their own infrastructure):</strong><br>` +
-        `• <strong>nginx ≥ 1.27 / OpenSSL ≥ 3.2:</strong> add <code>ssl_ecdh_curve X25519MLKEM768:X25519</code> in your server block.<br>` +
-        `• <strong>Apache httpd ≥ 2.4.60:</strong> set <code>SSLOpenSSLConfCmd Groups X25519MLKEM768:X25519</code>.<br>` +
-        `• <strong>Java (JDK 24+ / Bouncy Castle):</strong> ML-KEM support via <code>jdk.tls.namedGroups=x25519_mlkem768</code> JVM property.<br>` +
-        `• <strong>F5 BIG-IP / Citrix NetScaler:</strong> configure named groups in the SSL profile — consult your vendor's PQC readiness guide.<br>` +
-        `• <strong>AWS ALB / NLB:</strong> enable via security policy — select a policy that includes <code>TLS13-X25519MLKEM768</code> groups.<br><br>` +
-        `This is the single most impactful step available today and requires no change to certificates or application code.`;
+        `<strong>On your own server or load balancer:</strong> Enable the <strong>X25519+ML-KEM-768</strong> hybrid key exchange group in your TLS configuration.`;
 
       body  = cdn_block + server_block;
       color = "#9a3412"; bg = "#fff7ed"; border = "#fdba74";
