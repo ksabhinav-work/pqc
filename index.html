@@ -964,11 +964,10 @@ function render(data, domain, port) {
   const { findings, portfolio_score, hndl_risk, impersonation_risk,
           impersonation_count, meta } = data;
 
-  // If the CDN confirms browser clients get PQC, rate on that basis.
-  // The scanner sees X25519 because CDNs fingerprint clients and reserve
-  // ML-KEM for recognised browsers. The rating should reflect end-user
-  // browser experience, not the scanner's raw probe result.
-  const effectiveHndl = (meta.browser_pqc) ? false : hndl_risk;
+  // Use actual hndl_risk for grading — the probe result is what we measured.
+  // CDN browser PQC is inferred from CDN identity, not confirmed by the probe.
+  // A prominent CDN note in the UI explains the context.
+  const effectiveHndl = hndl_risk;
 
   // Dynamically learn which domains are PQC-capable
   if (!effectiveHndl) {
@@ -984,9 +983,12 @@ function render(data, domain, port) {
 
   // CDN browser note for verdict
   const cdnBrowserNote = (meta.cdn_provider && meta.browser_pqc)
-    ? `<div style="margin-top:8px;font-size:12px;color:#14532d;font-style:italic">
-        🌐 <strong>${meta.cdn_provider}</strong> — browser clients receive X25519+ML-KEM-768 automatically.
-        This scanner connects as a non-browser client and negotiated X25519 — the grade reflects browser experience.
+    ? `<div style="margin-top:10px;padding:10px 14px;background:rgba(20,83,45,0.08);border-radius:2px;border-left:3px solid #14532d;font-size:12.5px;line-height:1.65">
+        🌐 <strong>CDN detected: ${meta.cdn_provider}.</strong>
+        This scanner could not replicate a browser TLS fingerprint precisely enough to negotiate PQC with this CDN —
+        the grade reflects what non-browser clients (API systems, monitoring tools) see.
+        Browser clients typically receive <strong>X25519+ML-KEM-768</strong> from this CDN.
+        Verify via browser DevTools → Security tab.
        </div>`
     : "";
 
@@ -1053,11 +1055,11 @@ function render(data, domain, port) {
     ${meta.kex_probe ? `<div class="info-note">ℹ️ ${meta.kex_probe}</div>` : ""}
     ${meta.cdn_provider && meta.browser_pqc ? `
     <div class="info-note" style="border-left-color:#14532d;background:#f0fdf4">
-      🌐 <strong>CDN detected: ${meta.cdn_provider}.</strong> ${meta.browser_pqc_note}
-      This scanner connects as a non-browser client and sees <strong>X25519</strong>.
-      Your browser likely negotiates <strong>X25519+ML-KEM-768</strong> — you can verify via
-      browser DevTools → Security tab.
-      The rating below reflects what API clients, automated systems, and monitoring tools see.
+      🌐 <strong>CDN detected: ${meta.cdn_provider}.</strong>
+      This scanner could not replicate a browser TLS fingerprint precisely enough to negotiate PQC —
+      X25519 is what non-browser clients see.
+      Browser clients typically receive <strong>X25519+ML-KEM-768</strong> from this CDN.
+      Verify via browser DevTools → Security tab.
     </div>` : (meta.cdn_provider ? `
     <div class="info-note" style="border-left-color:#92400e;background:#fffbeb">
       🌐 <strong>CDN detected: ${meta.cdn_provider}.</strong> ${meta.browser_pqc_note || ""}
