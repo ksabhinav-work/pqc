@@ -1059,7 +1059,7 @@ def do_scan(host, port=443):
         meta["cert_chain"] = chain_meta
         meta["cert_chain_depth"] = len(chain)
 
-    # HTTP headers
+    # HTTP headers + CDN detection
     if HAS_REQUESTS:
         try:
             scheme = "https" if port in (443,8443) else "http"
@@ -1071,6 +1071,39 @@ def do_scan(host, port=443):
             meta["final_url"]    = r.url
             meta["hsts"]         = hdrs.get("strict-transport-security","")
             meta["server"]       = hdrs.get("server","")
+
+            # CDN detection — identify whether PQC is CDN-level or origin-level
+            server_hdr = meta["server"].lower()
+            cf_hdr     = hdrs.get("cf-ray","") or hdrs.get("cf-cache-status","")
+            via_hdr    = hdrs.get("via","").lower()
+            x_served   = hdrs.get("x-served-by","").lower()
+
+            CDN_MAP = {
+                "cloudflare":  ("Cloudflare",  True,  "Cloudflare deploys X25519+ML-KEM-768 by default for browser clients."),
+                "github.com":  ("GitHub Pages (Fastly)", True,  "Fastly (GitHub Pages CDN) deploys X25519+ML-KEM-768 for browser clients."),
+                "fastly":      ("Fastly",       True,  "Fastly deploys X25519+ML-KEM-768 for browser clients."),
+                "aws":         ("AWS CloudFront", False, "AWS CloudFront supports X25519+ML-KEM-768 — check if enabled in distribution settings."),
+                "cloudfront":  ("AWS CloudFront", False, "AWS CloudFront supports X25519+ML-KEM-768 — check if enabled in distribution settings."),
+                "akamai":      ("Akamai",       False, "Akamai supports PQC — check your property configuration."),
+                "vercel":      ("Vercel",        True,  "Vercel (Cloudflare-backed) deploys X25519+ML-KEM-768 for browser clients."),
+            }
+
+            cdn_provider     = None
+            browser_pqc      = False
+            browser_pqc_note = None
+
+            for key, (name, auto_pqc, note) in CDN_MAP.items():
+                if (key in server_hdr or key in via_hdr or key in x_served
+                        or (key == "cloudflare" and cf_hdr)):
+                    cdn_provider     = name
+                    browser_pqc      = auto_pqc
+                    browser_pqc_note = note
+                    break
+
+            if cdn_provider:
+                meta["cdn_provider"]      = cdn_provider
+                meta["browser_pqc"]       = browser_pqc
+                meta["browser_pqc_note"]  = browser_pqc_note
         except: pass
 
     # Score
