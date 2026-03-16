@@ -964,6 +964,12 @@ function render(data, domain, port) {
   const { findings, portfolio_score, hndl_risk, impersonation_risk,
           impersonation_count, meta } = data;
 
+  // If the CDN confirms browser clients get PQC, rate on that basis.
+  // The scanner sees X25519 because CDNs fingerprint clients and reserve
+  // ML-KEM for recognised browsers. The rating should reflect end-user
+  // browser experience, not the scanner's raw probe result.
+  const effectiveHndl = (meta.browser_pqc) ? false : hndl_risk;
+
   // Dynamically learn which domains are PQC-capable
   if (!effectiveHndl) {
     PQC_DOMAINS.add(domain);
@@ -973,11 +979,6 @@ function render(data, domain, port) {
   const chainBreakdown = (meta.cert_chain || []).map(c =>
     `${c.role === 'leaf' ? "🌿 <span class='jargon' data-tip='Leaf certificate'>Leaf certificate</span>" : c.role === 'intermediate' ? "🔗 <span class='jargon' data-tip='Intermediate CA'>Intermediate CA</span>" : "🏛 <span class='jargon' data-tip='Root CA'>Root CA</span>"}: ${c.subject || 'N/A'}`
   ).join("<br>");
-  // If the CDN confirms browser clients get PQC, rate on that basis.
-  // The scanner sees X25519 because CDNs fingerprint clients and reserve
-  // ML-KEM for recognised browsers. The rating should reflect end-user
-  // browser experience, not the scanner's raw probe result.
-  const effectiveHndl = (meta.browser_pqc) ? false : hndl_risk;
   const v = verdictFor(portfolio_score, effectiveHndl, impersonation_risk, findings);
   let html = "";
 
