@@ -891,18 +891,34 @@ def do_scan(host, port=443):
     if ver_key == "TLS-1.3":
         kex_id, kex_name = probe_kex_group(host, port)
         if kex_name and not str(kex_name).startswith("probe:"):
+            # Probe succeeded — we know the exact group
             desc = KEX_DESCRIPTIONS.get(kex_name, f"Key exchange group (IANA 0x{kex_id:04x})").format(id=kex_id)
             meta["kex_group"] = kex_name
             findings.append({"algo": kex_name, "context": desc,
-                             "source": "Raw TLS ServerHello \u2192 key_share extension",
+                             "source": "Raw TLS ServerHello → key_share extension",
                              **pqc_lookup(kex_name)})
         else:
+            # Probe failed — emit a conservative X25519 finding so the UI always
+            # shows a KEX entry, tagged as estimated. X25519 is the most common
+            # TLS 1.3 group and the safe conservative assumption when unknown.
             meta["kex_probe_error"] = kex_name or "probe:unknown"
             meta["kex_probe"] = (
-                "Key exchange group could not be determined \u2014 the server may be "
-                "filtering non-browser TLS handshakes. The cipher suite KEX below "
-                "is a fallback estimate."
+                "Key exchange group could not be determined — the server filtered "
+                "the raw TLS probe. Showing X25519 as a conservative estimate: "
+                "the actual group may be stronger (e.g. X25519+ML-KEM-768 if the "
+                "server has deployed PQC hybrid key exchange)."
             )
+            meta["kex_group"] = "X25519"
+            findings.append({
+                "algo": "X25519",
+                "context": (
+                    "TLS 1.3 key exchange — actual group unknown (probe filtered by server). "
+                    "X25519 shown as conservative estimate. If this site uses Cloudflare or Fastly, "
+                    "the actual group may already be X25519+ML-KEM-768."
+                ),
+                "source": "Estimated — raw probe filtered",
+                **pqc_lookup("X25519"),
+            })
     else:
         # TLS 1.2: probe the actual ECDHE curve from ServerKeyExchange
         cipher_name_str = cipher[0] if cipher else ""
@@ -913,7 +929,7 @@ def do_scan(host, port=443):
                 meta["kex_probe"] = f"TLS 1.2 ECDHE curve from ServerKeyExchange: {actual_curve}"
             else:
                 actual_curve = "ECDH-P256"
-                meta["kex_probe"] = "TLS 1.2 curve probe failed \u2014 defaulting to ECDH-P256 (conservative estimate)"
+                meta["kex_probe"] = "TLS 1.2 curve probe failed — defaulting to ECDH-P256 (conservative estimate)"
             findings.append({
                 "algo": actual_curve,
                 "context": f"TLS 1.2 key exchange: {actual_curve} (read from ServerKeyExchange record)",
@@ -921,7 +937,7 @@ def do_scan(host, port=443):
                 **pqc_lookup(actual_curve),
             })
         else:
-            meta["kex_probe"] = f"Skipped \u2014 server uses {tls_ver}, not TLS 1.3."
+            meta["kex_probe"] = f"Skipped — server uses {tls_ver}, not TLS 1.3."
 
     # Cipher suite
     if cipher:
@@ -985,10 +1001,14 @@ def do_scan(host, port=443):
     scores = [f["rating"] for f in findings]
     portfolio = round(sum(scores)/len(scores)) if scores else 3
 
-    # HNDL vs impersonation risk
-    kex_cats = {"Key Exchange","Protocol"}
+    # HNDL risk: only actual Key Exchange findings, NOT the downgrade warning.
+    # TLS-Downgrade is a conditional protocol risk, not a confirmed KEX weakness.
+    # A site that negotiated TLS 1.3 + X25519+ML-KEM-768 but also accepts TLS 1.2
+    # should not be marked as having HNDL risk — the actual session was quantum-safe.
     hndl_count = sum(1 for f in findings
-                     if f["threat"] in ("CRITICAL","HIGH") and f["category"] in kex_cats)
+                     if f["threat"] in ("CRITICAL","HIGH")
+                     and f["category"] == "Key Exchange"
+                     and f.get("algo") != "TLS-Downgrade")
     sig_count  = sum(1 for f in findings
                      if f["threat"] in ("CRITICAL","HIGH") and f["category"] == "Signature")
 
