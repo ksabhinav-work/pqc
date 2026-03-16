@@ -1169,8 +1169,7 @@ function render(data, domain, port) {
         <strong>Who is most at risk?</strong> Data with a long secrecy horizon — medical records, financial data,
         government communications, legal documents, anything that needs to stay private for 10+ years.
         <br><br>
-        <strong>What the site owner should do:</strong> Enable TLS 1.3 with X25519+ML-KEM-768 hybrid key exchange.
-        Major CDNs like Cloudflare, Fastly, and AWS CloudFront already support this.
+        <strong>What the site owner should do:</strong> If your organisation controls the TLS termination point, configure your TLS stack to negotiate X25519+ML-KEM-768. If you use a CDN or reverse proxy, check whether PQC hybrid key exchange is enabled.
       </div>
       <div class="timeline">
         <div class="tl-safe" style="width:0%"></div>
@@ -1275,7 +1274,7 @@ function categorySummary(category, findings, hndl_risk, certChain) {
       color = "#14532d"; bg = "#f0fdf4"; border = "#86efac";
     } else {
       title = "⚠️ Action available — enable quantum-safe key exchange";
-      body  = "Enable <strong>TLS 1.3</strong> with the <strong>X25519+ML-KEM-768</strong> hybrid group (IANA 0x11ec). Major CDNs — Cloudflare, Fastly, AWS CloudFront — already support this. If you use one of these, it may be a single toggle. This is the single most impactful step available today.";
+      body  = "<strong>If your organisation controls the TLS termination point:</strong> Configure your TLS stack to negotiate the <strong>X25519+ML-KEM-768</strong> hybrid group.<br><br><strong>If you use a CDN or reverse proxy:</strong> Many CDNs — including Cloudflare, Fastly, and AWS CloudFront — already support X25519+ML-KEM-768 and may negotiate it automatically with browser clients. It is worth verifying whether this extends to non-browser API clients, as CDN behaviour can vary depending on how the client connection is fingerprinted.";
       color = "#9a3412"; bg = "#fff7ed"; border = "#fdba74";
     }
   }
