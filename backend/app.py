@@ -287,11 +287,21 @@ def build_client_hello(host):
     # 13. PSK key exchange modes
     psk_ext = struct.pack("!HHBB", 0x002d, 2, 1, 0x01)
 
-    # 14. Key share — X25519 (server can HRR to negotiate PQC group)
-    x25519_pub = os.urandom(32)
-    ks_entry   = struct.pack("!HH", 0x001D, 32) + x25519_pub
-    ks_ext     = (struct.pack("!HH", 0x0033, len(ks_entry) + 2) +
-                  struct.pack("!H", len(ks_entry)) + ks_entry)
+    # 14. Key share — send three offers: PQC hybrids first, then X25519.
+    #     Sending a concrete PQC key share (random bytes of the correct size)
+    #     causes CDNs like Fastly to actually negotiate the PQC group rather
+    #     than falling back to X25519 (Fastly does not HRR for PQC — it only
+    #     selects a PQC group if the client offers a PQC key share directly).
+    #     X25519+ML-KEM-768 key share = 32 (X25519 pubkey) + 1184 (ML-KEM-768 ek) = 1216 bytes
+    pqc_iana_pub  = os.urandom(1216)  # X25519+ML-KEM-768 (IANA 0x11ec)
+    pqc_cf_pub    = os.urandom(1216)  # X25519+ML-KEM-768 (Cloudflare draft 0x6399)
+    x25519_pub    = os.urandom(32)    # Classical fallback
+    ks_pqc_iana   = struct.pack("!HH", 0x11ec, 1216) + pqc_iana_pub
+    ks_pqc_cf     = struct.pack("!HH", 0x6399, 1216) + pqc_cf_pub
+    ks_x25519     = struct.pack("!HH", 0x001D, 32)   + x25519_pub
+    ks_entries    = ks_pqc_iana + ks_pqc_cf + ks_x25519
+    ks_ext        = (struct.pack("!HH", 0x0033, len(ks_entries) + 2) +
+                     struct.pack("!H", len(ks_entries)) + ks_entries)
 
     # 15. Trailing GREASE extension
     grease2     = random.choice([g for g in GREASE_VALUES if g != grease])
@@ -367,7 +377,9 @@ def probe_kex_group(host, port=443, timeout=8):
                 continue
             # Skip 4-byte hs header + 2-byte version + 32-byte random
             p = 4 + 2 + 32
-            is_hrr = len(payload) >= 36 and (payload[4:36] == HRR_MAGIC)
+            # HRR magic is in the random field: bytes 6-38 of the hs message body
+            # payload[0]=type, [1:4]=length, [4:6]=legacy_version, [6:38]=random
+            is_hrr = len(payload) >= 38 and (payload[6:38] == HRR_MAGIC)
             if p >= len(payload):
                 break
             sid_len = payload[p]; p += 1 + sid_len + 2 + 1
@@ -391,6 +403,99 @@ def probe_kex_group(host, port=443, timeout=8):
     except Exception as e:
         probe_error = f"probe:error:{type(e).__name__}"
     return None, probe_error
+
+
+
+def probe_tls12_kex_curve(host, port=443, timeout=8):
+    """
+    For TLS 1.2 ECDHE connections: send a raw TLS 1.2 ClientHello and parse
+    the ServerKeyExchange record to find the actual named curve used.
+    Returns algo name string like "ECDH-P256", "ECDH-P384", "X25519", or None.
+
+    In TLS 1.2, the key exchange curve is NOT in the cipher suite string —
+    it is negotiated via the supported_groups extension and announced by the
+    server in a ServerKeyExchange handshake message (type 0x0c).
+    """
+    CURVE_MAP = {
+        0x0017: "ECDH-P256",
+        0x0018: "ECDH-P384",
+        0x0019: "ECDH-P521",
+        0x001D: "X25519",
+        0x001E: "X448",
+    }
+    try:
+        sni_name = host.encode()
+        sni_body = b"\x00" + struct.pack("!H", len(sni_name)) + sni_name
+        sni_list = struct.pack("!H", len(sni_body)) + sni_body
+        sni_ext  = struct.pack("!HH", 0x0000, len(sni_list)) + sni_list
+
+        curves = [0x001D, 0x0017, 0x0018, 0x0019, 0x001E]
+        curves_data = b"".join(struct.pack("!H", c) for c in curves)
+        groups_ext  = (struct.pack("!HH", 0x000a, len(curves_data) + 2) +
+                       struct.pack("!H", len(curves_data)) + curves_data)
+
+        ec_points_ext = struct.pack("!HHBB", 0x000b, 2, 1, 0x00)
+
+        sig_algs = [0x0401, 0x0501, 0x0601, 0x0403, 0x0503, 0x0603, 0x0804, 0x0805, 0x0806]
+        sig_data = b"".join(struct.pack("!H", s) for s in sig_algs)
+        sig_ext  = (struct.pack("!HH", 0x000d, len(sig_data) + 2) +
+                    struct.pack("!H", len(sig_data)) + sig_data)
+
+        extensions = sni_ext + groups_ext + ec_points_ext + sig_ext
+
+        ciphers = struct.pack("!HHHHHHHH",
+            0xc02b, 0xc02f, 0xc02c, 0xc030,
+            0xcca9, 0xcca8, 0xc013, 0xc014,
+        )
+        random_bytes = os.urandom(32)
+
+        body = (
+            struct.pack("!H", 0x0303) +
+            random_bytes +
+            b"\x00" +
+            struct.pack("!H", len(ciphers)) + ciphers +
+            b"\x01\x00" +
+            struct.pack("!H", len(extensions)) + extensions
+        )
+        hs_msg = b"\x01" + struct.pack("!I", len(body))[1:] + body
+        record = b"\x16\x03\x01" + struct.pack("!H", len(hs_msg)) + hs_msg
+
+        sock = socket.create_connection((host, port), timeout=timeout)
+        sock.sendall(record)
+        data = b""
+        sock.settimeout(5)
+        try:
+            while len(data) < 32768:
+                chunk = sock.recv(4096)
+                if not chunk: break
+                data += chunk
+                if len(data) > 8192: break
+        except socket.timeout:
+            pass
+        sock.close()
+
+        pos = 0
+        while pos < len(data) - 5:
+            if data[pos] != 0x16:
+                pos += 1; continue
+            rec_len = struct.unpack("!H", data[pos+3:pos+5])[0]
+            if rec_len > 16384 or pos + 5 + rec_len > len(data): break
+            payload = data[pos+5:pos+5+rec_len]
+            pos += 5 + rec_len
+            hp = 0
+            while hp < len(payload) - 4:
+                hs_type = payload[hp]
+                hs_len  = struct.unpack("!I", b"\x00" + payload[hp+1:hp+4])[0]
+                hs_body = payload[hp+4:hp+4+hs_len]
+                hp += 4 + hs_len
+                if hs_type == 0x0c:  # ServerKeyExchange
+                    if len(hs_body) >= 3 and hs_body[0] == 0x03:
+                        curve_id = struct.unpack("!H", hs_body[1:3])[0]
+                        return CURVE_MAP.get(curve_id, f"ECDH-Unknown(0x{curve_id:04x})")
+                    return None
+    except Exception:
+        pass
+    return None
 
 
 def parse_cipher_suite(cipher_name):
@@ -682,7 +787,7 @@ def do_scan(host, port=443):
                      "context": f"Negotiated protocol version: {tls_ver}",
                      "source": "TLS handshake", **pqc_lookup(ver_key)})
 
-    # Supported versions
+    # Supported versions enumeration
     supported = []
     for pn, pc in [("TLS-1.3", getattr(ssl.TLSVersion,"TLSv1_3",None)),
                    ("TLS-1.2", getattr(ssl.TLSVersion,"TLSv1_2",None))]:
@@ -696,29 +801,67 @@ def do_scan(host, port=443):
                     supported.append(pn)
         except: pass
     meta["supported_versions"] = supported
-    for v in supported:
-        if v != ver_key:
-            findings.append({"algo": v, "context": "Also accepted by server",
-                             "source": "Version enumeration", **pqc_lookup(v)})
 
-    # KEX group probe (TLS 1.3 only)
+    # Downgrade risk: server accepts both TLS 1.3 and TLS 1.2
+    has_tls13 = "TLS-1.3" in supported
+    has_tls12 = "TLS-1.2" in supported
+    if has_tls13 and has_tls12:
+        meta["downgrade_risk"] = True
+        findings.append({
+            "algo": "TLS-Downgrade",
+            "context": (
+                "Downgrade risk: server accepts both TLS 1.3 and TLS 1.2. "
+                "An attacker who can interfere with the connection can force a fallback "
+                "to TLS 1.2, stripping any PQC key exchange protection. "
+                "Fix: disable TLS 1.2 if all clients support TLS 1.3, or deploy TLS 1.3-only mode."
+            ),
+            "source": "Version enumeration",
+            "rating": 1, "threat": "HIGH", "category": "Protocol",
+            "quantum": "Depends", "nist": "Conditional", "migrate": "Disable TLS 1.2",
+        })
+    else:
+        meta["downgrade_risk"] = False
+        for v in supported:
+            if v != ver_key:
+                findings.append({"algo": v, "context": "Also accepted by server",
+                                 "source": "Version enumeration", **pqc_lookup(v)})
+
+    # KEX group probe
     if ver_key == "TLS-1.3":
         kex_id, kex_name = probe_kex_group(host, port)
         if kex_name and not str(kex_name).startswith("probe:"):
             desc = KEX_DESCRIPTIONS.get(kex_name, f"Key exchange group (IANA 0x{kex_id:04x})").format(id=kex_id)
             meta["kex_group"] = kex_name
             findings.append({"algo": kex_name, "context": desc,
-                             "source": "Raw TLS ServerHello → key_share extension",
+                             "source": "Raw TLS ServerHello \u2192 key_share extension",
                              **pqc_lookup(kex_name)})
         else:
             meta["kex_probe_error"] = kex_name or "probe:unknown"
             meta["kex_probe"] = (
-                "Key exchange group could not be determined — the server may be "
+                "Key exchange group could not be determined \u2014 the server may be "
                 "filtering non-browser TLS handshakes. The cipher suite KEX below "
                 "is a fallback estimate."
             )
     else:
-        meta["kex_probe"] = f"Skipped — server uses {tls_ver}, not TLS 1.3. TLS 1.2 cannot use PQC hybrid key exchange."
+        # TLS 1.2: probe the actual ECDHE curve from ServerKeyExchange
+        cipher_name_str = cipher[0] if cipher else ""
+        if "ECDHE" in cipher_name_str.upper():
+            actual_curve = probe_tls12_kex_curve(host, port)
+            if actual_curve:
+                meta["kex_group"] = actual_curve
+                meta["kex_probe"] = f"TLS 1.2 ECDHE curve from ServerKeyExchange: {actual_curve}"
+            else:
+                actual_curve = "ECDH-P256"
+                meta["kex_probe"] = "TLS 1.2 curve probe failed \u2014 defaulting to ECDH-P256 (conservative estimate)"
+            findings.append({
+                "algo": actual_curve,
+                "context": f"TLS 1.2 key exchange: {actual_curve} (read from ServerKeyExchange record)",
+                "source": "Raw TLS 1.2 ServerKeyExchange",
+                **pqc_lookup(actual_curve),
+            })
+        else:
+            meta["kex_probe"] = f"Skipped \u2014 server uses {tls_ver}, not TLS 1.3."
+
     # Cipher suite
     if cipher:
         meta["cipher_suite"] = cipher[0]
