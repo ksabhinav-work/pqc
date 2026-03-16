@@ -1068,7 +1068,7 @@ function render(data, domain, port) {
         <div class="section-title">Identity — Certificate & Signature</div>
         <div class="section-desc">
           A certificate is the website's digital passport — it proves you're talking to the real server, not an impostor.
-          A trusted authority signs this certificate. Breaking the signature would let an attacker
+          A trusted authority signs this certificate using <span class="jargon" data-tip="Asymmetric">asymmetric cryptography</span>. Breaking the signature would let an attacker
           <strong>impersonate the website</strong>. Unlike key exchange, this cannot be attacked retroactively —
           only when a quantum computer is actively running.
         </div>
@@ -1131,7 +1131,7 @@ function render(data, domain, port) {
         <div>
           <div class="section-title">Data Encryption — Symmetric Cipher</div>
           <div class="section-desc">
-            After the key is agreed, all data is encrypted using a symmetric cipher (like AES).
+            After the key is agreed, all data is encrypted using a <span class="jargon" data-tip="Symmetric">symmetric cipher</span> (like AES).
             Quantum computers use Grover's algorithm to weaken these — but 256-bit keys have enough headroom to stay safe.
           </div>
         </div>
@@ -1161,10 +1161,9 @@ function render(data, domain, port) {
         and store it indefinitely. When a sufficiently powerful quantum computer arrives, they decrypt it.
         <br><br>
         <strong>Who estimates what timeline?</strong><br>
+        • <strong>India (NQM Task Force, 2026)</strong>: recommends completing migration of high-priority systems by 2028 for critical infrastructure and by 2030 for other enterprises, with full PQC adoption by 2029 and 2033 respectively.<br>
         • <strong>NSA / CISA (US)</strong>: plan for Q-Day between 2030–2035. Already mandating quantum migration for US federal agencies.<br>
-        • <strong>NIST (US standards body)</strong>: finalised PQC standards in 2024 (FIPS 203/204/205) citing urgency.<br>
         • <strong>GCHQ / NCSC (UK)</strong>: recommends migration complete by 2035.<br>
-        • <strong>IBM / Google</strong>: predict 1 million qubit machines within this decade.<br>
         <br>
         <strong>Who is most at risk?</strong> Data with a long secrecy horizon — medical records, financial data,
         government communications, legal documents, anything that needs to stay private for 10+ years.
@@ -1274,7 +1273,7 @@ function categorySummary(category, findings, hndl_risk, certChain) {
       color = "#14532d"; bg = "#f0fdf4"; border = "#86efac";
     } else {
       title = "⚠️ Action available — enable quantum-safe key exchange";
-      body  = "<strong>If your organisation controls the TLS termination point:</strong> Configure your TLS stack to negotiate the <strong>X25519+ML-KEM-768</strong> hybrid group.<br><br><strong>If you use a CDN or reverse proxy:</strong> Many CDNs — including Cloudflare, Fastly, and AWS CloudFront — already support X25519+ML-KEM-768 and may negotiate it automatically with browser clients. It is worth verifying whether this extends to non-browser API clients, as CDN behaviour can vary depending on how the client connection is fingerprinted.";
+      body  = "<strong>If your organisation controls the TLS termination point:</strong> Configure your TLS stack to negotiate the <strong>X25519+ML-KEM-768</strong> hybrid group.<br><br><strong>If you use a <span class='jargon' data-tip='CDN'>CDN</span> or reverse proxy:</strong> Many CDNs — including Cloudflare, Fastly, and AWS CloudFront — already support X25519+ML-KEM-768 and may negotiate it automatically with browser clients. It is worth verifying whether this extends to non-browser API clients, as CDN behaviour can vary depending on how the client connection is fingerprinted.";
       color = "#9a3412"; bg = "#fff7ed"; border = "#fdba74";
     }
   }
@@ -1556,6 +1555,9 @@ const TIPS = {
   "GB/T 32907":       "<strong>GB/T 32907</strong> — The Chinese national standard for SM4, a symmetric cipher. Uses 128-bit keys — weakened but not broken by Grover’s algorithm.",
   "GB/T 32918":       "<strong>GB/T 32918</strong> — The Chinese national standard for SM2, an elliptic curve algorithm. Vulnerable to Shor’s algorithm on a quantum computer, like ECDSA.",
   "HNDL":   "<strong>Harvest Now, Decrypt Later</strong> — An attack where someone records your encrypted traffic today and waits until quantum computers can decrypt it.",
+  "CDN":    "<strong>Content Delivery Network (CDN)</strong> — A network of servers distributed globally that sits between your users and your origin server. When you use a CDN, encrypted connections terminate at the CDN's edge, not at your own server. The CDN decrypts and re-encrypts traffic on your behalf, meaning it can read everything in plaintext.",
+  "Symmetric": "<strong>Symmetric encryption</strong> — Both the sender and receiver use the same secret key to encrypt and decrypt data. It is fast and efficient but requires the two parties to first agree on a shared key — that agreement is handled by the key exchange. AES is the most common symmetric cipher.",
+  "Asymmetric": "<strong>Asymmetric cryptography</strong> — Uses a pair of mathematically linked keys: a public key (shared openly) and a private key (kept secret). Anyone can encrypt with the public key; only the private key holder can decrypt. Also used for digital signatures. RSA and elliptic curve cryptography are asymmetric. Most vulnerable to quantum computers via Shor's algorithm.",
 };
 
 const tip = document.getElementById('tip');
