@@ -827,6 +827,20 @@ function verdictFor(score, hndl, imp, findings) {
     PQC_SIG_PREFIXES.some(p => f.algo && f.algo.startsWith(p))
   );
 
+  // Classically weak TODAY — not just quantum-vulnerable, but actually
+  // broken or deprecated by current classical standards.
+  // RSA-2048, ECDSA-P256, SHA-256 are NOT in this list — they are quantum-
+  // vulnerable but perfectly valid by today's standards.
+  const CLASSICALLY_WEAK = new Set([
+    "SHA-1","MD5","RC4","DES","3DES",
+    "SSL-2.0","SSL-3.0","TLS-1.0","TLS-1.1",
+    "RSA-512","RSA-1024","DH-512","DH-1024",
+    "ECDH-P192","ECDSA-P192","DSA-1024",
+  ]);
+  const hasClassicalWeakness = (findings || []).some(f =>
+    CLASSICALLY_WEAK.has(f.algo) && f.threat === "CRITICAL"
+  );
+
   // A+: quantum-safe KEX + quantum-safe cert
   if (!hndl && certPQC)
     return { grade:"A+", color:"#14532d", bg:"#f0fdf4", border:"#86efac",
@@ -839,20 +853,20 @@ function verdictFor(score, hndl, imp, findings) {
       phrase:"No harvest risk, impersonation risk remains",
       plain:"Traffic recorded today cannot be decrypted by future quantum computers. However, the certificate still uses classical algorithms — once quantum computers arrive, an attacker could forge it and impersonate this site." };
 
-  // B: classical KEX, cert decent, nothing broken
-  if (hndl && score >= 3)
+  // C: classical KEX + something genuinely broken by today's standards
+  if (hndl && hasClassicalWeakness)
+    return { grade:"C", color:"#9a3412", bg:"#fff7ed", border:"#fdba74",
+      phrase:"Harvest risk active, certificate weak today",
+      plain:"Encrypted traffic can be harvested now and decrypted later. The connection also uses algorithms that are weak by today's classical standards — this is an immediate concern, independent of quantum computers." };
+
+  // B: classical KEX, modern certs — the normal state of the internet in 2026
+  if (hndl)
     return { grade:"B", color:"#92400e", bg:"#fffbeb", border:"#fcd34d",
       phrase:"Harvest risk active, certificates vulnerable in quantum era",
       plain:"Encrypted traffic from today could be stored and decrypted once quantum computers arrive. The certificate uses classical algorithms — it is fine by today's standards but will need upgrading when quantum-safe certificates become available from certificate authorities." };
 
-  // C: classical KEX, weak cert
-  if (hndl && score >= 1)
-    return { grade:"C", color:"#9a3412", bg:"#fff7ed", border:"#fdba74",
-      phrase:"Harvest risk active, certificate weak today",
-      plain:"Encrypted traffic can be harvested now and decrypted later. The certificate also uses outdated algorithms that are weak by today's standards — this is an immediate concern, independent of quantum computers." };
-
-  // D: deprecated but not withdrawn
-  if (score >= 1)
+  // D: no HNDL risk but deprecated algorithms present
+  if (hasClassicalWeakness)
     return { grade:"D", color:"#7c2d12", bg:"#fef2f2", border:"#fca5a5",
       phrase:"Weak encryption, multiple vulnerabilities",
       plain:"This site uses outdated encryption with multiple weaknesses — a full security upgrade is needed, independent of quantum computers." };
