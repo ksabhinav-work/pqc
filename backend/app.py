@@ -237,19 +237,15 @@ def build_client_hello(host):
     # 5. Supported groups — PQC hybrids first, then classical
     groups = [
         grease,
-        0x11ec,   # X25519+ML-KEM-768  (IANA standard)
-        0x6399,   # X25519+ML-KEM-768  (Cloudflare draft)
+        0x11ec,   # X25519+ML-KEM-768  (IANA, current standard)
+        0x6399,   # X25519+ML-KEM-768  (Cloudflare draft — advertised but no key share sent)
         0x11eb,   # SecP256r1+ML-KEM-768
         0x639a,   # X25519+ML-KEM-1024
-        0x0203,   # ML-KEM-768 pure
-        0x0204,   # ML-KEM-1024 pure
         0x001D,   # X25519
         0x001E,   # X448
         0x0017,   # P-256
         0x0018,   # P-384
         0x0019,   # P-521
-        0x0100,   # ffdhe2048
-        0x0101,   # ffdhe3072
     ]
     groups_data = b"".join(struct.pack("!H", g) for g in groups)
     groups_ext  = (struct.pack("!HH", 0x000a, len(groups_data) + 2) +
@@ -287,21 +283,18 @@ def build_client_hello(host):
     # 13. PSK key exchange modes
     psk_ext = struct.pack("!HHBB", 0x002d, 2, 1, 0x01)
 
-    # 14. Key share — send three offers: PQC hybrids first, then X25519.
-    #     Sending a concrete PQC key share (random bytes of the correct size)
-    #     causes CDNs like Fastly to actually negotiate the PQC group rather
-    #     than falling back to X25519 (Fastly does not HRR for PQC — it only
-    #     selects a PQC group if the client offers a PQC key share directly).
-    #     X25519+ML-KEM-768 key share = 32 (X25519 pubkey) + 1184 (ML-KEM-768 ek) = 1216 bytes
-    pqc_iana_pub  = os.urandom(1216)  # X25519+ML-KEM-768 (IANA 0x11ec)
-    pqc_cf_pub    = os.urandom(1216)  # X25519+ML-KEM-768 (Cloudflare draft 0x6399)
-    x25519_pub    = os.urandom(32)    # Classical fallback
-    ks_pqc_iana   = struct.pack("!HH", 0x11ec, 1216) + pqc_iana_pub
-    ks_pqc_cf     = struct.pack("!HH", 0x6399, 1216) + pqc_cf_pub
-    ks_x25519     = struct.pack("!HH", 0x001D, 32)   + x25519_pub
-    ks_entries    = ks_pqc_iana + ks_pqc_cf + ks_x25519
-    ks_ext        = (struct.pack("!HH", 0x0033, len(ks_entries) + 2) +
-                     struct.pack("!H", len(ks_entries)) + ks_entries)
+    # 14. Key share — one PQC offer (0x11ec) + X25519 fallback.
+    #     Sending a concrete PQC key share causes Fastly/CDNs to negotiate
+    #     the PQC group. Two key shares (2×1216 bytes) caused decode_error
+    #     on Fastly — one is enough to signal PQC support.
+    #     X25519+ML-KEM-768: 32 bytes (X25519) + 1184 bytes (ML-KEM-768 ek) = 1216 bytes
+    pqc_pub    = os.urandom(1216)  # X25519+ML-KEM-768 (IANA 0x11ec)
+    x25519_pub = os.urandom(32)    # classical fallback
+    ks_pqc     = struct.pack("!HH", 0x11ec, 1216) + pqc_pub
+    ks_x25519  = struct.pack("!HH", 0x001D, 32)   + x25519_pub
+    ks_entries = ks_pqc + ks_x25519
+    ks_ext     = (struct.pack("!HH", 0x0033, len(ks_entries) + 2) +
+                  struct.pack("!H", len(ks_entries)) + ks_entries)
 
     # 15. Trailing GREASE extension
     grease2     = random.choice([g for g in GREASE_VALUES if g != grease])
