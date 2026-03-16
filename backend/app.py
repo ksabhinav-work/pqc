@@ -531,9 +531,21 @@ def do_scan(host, port=443):
                     der_cert = conn.getpeercert(binary_form=True)
                     meta["cert_warning"] = "Certificate verification failed"
         except Exception as e:
-            return {"error": str(e)}, meta
+            err2 = str(e)
+            if "104" in err2 or "Connection reset" in err2:
+                return {"error": f"'{host}' blocked the connection — the server likely restricts access from cloud infrastructure IPs. The site is reachable from Indian networks. To inspect it, open browser DevTools (F12) \u2192 Security tab."}, meta
+            return {"error": f"TLS connection failed: {err2}"}, meta
+    except ConnectionRefusedError:
+        return {"error": f"Connection refused on port {port} — the server may not be accepting HTTPS on this port."}, meta
+    except socket.timeout:
+        return {"error": f"Connection timed out — '{host}' did not respond within 10 seconds."}, meta
     except Exception as e:
-        return {"error": str(e)}, meta
+        err_str = str(e)
+        if "104" in err_str or "Connection reset" in err_str:
+            return {"error": f"'{host}' blocked the connection — the server likely restricts access from cloud infrastructure IPs. The site is reachable from Indian networks. To inspect it, open browser DevTools (F12) \u2192 Security tab."}, meta
+        if "Name or service not known" in err_str or "nodename nor servname" in err_str:
+            return {"error": f"Could not resolve '{host}' — check the domain name is correct and publicly reachable."}, meta
+        return {"error": f"Connection failed: {err_str}"}, meta
 
     # TLS version finding
     ver_map = {"TLSv1.3":"TLS-1.3","TLSv1.2":"TLS-1.2","TLSv1.1":"TLS-1.1","TLSv1":"TLS-1.0"}
