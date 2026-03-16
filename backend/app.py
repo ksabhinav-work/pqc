@@ -189,69 +189,208 @@ def pqc_lookup(algo):
 
 
 def build_client_hello(host):
-    groups = [0x11ec,0x11eb,0x6399,0x639a,0x0203,0x0204,0x001D,0x001E,0x0017,0x0018,0x0019]
-    groups_data = b"".join(struct.pack("!H",g) for g in groups)
-    supported_groups_ext = struct.pack("!HH",0x000a,len(groups_data)+2) + struct.pack("!H",len(groups_data)) + groups_data
-    sni_name = host.encode()
-    sni_ext = (struct.pack("!HH",0x0000,len(sni_name)+5) +
-               struct.pack("!H",len(sni_name)+3) + b"\x00" +
-               struct.pack("!H",len(sni_name)) + sni_name)
-    sv_ext = struct.pack("!HHB",0x002b,3,2) + struct.pack("!H",0x0304)
-    sig_algs_data = struct.pack("!HHHHHH",0x0403,0x0503,0x0603,0x0804,0x0805,0x0806)
-    sig_ext = struct.pack("!HHH",0x000d,len(sig_algs_data)+2,len(sig_algs_data)) + sig_algs_data
-    kx_entry = struct.pack("!HH",0x001D,32) + os.urandom(32)
-    ks_ext = struct.pack("!HHH",0x0033,len(kx_entry)+2,len(kx_entry)) + kx_entry
-    extensions = sni_ext + supported_groups_ext + sv_ext + sig_ext + ks_ext
+    """
+    Build a TLS 1.3 ClientHello that closely mimics Chrome 120+.
+    Includes GREASE, correct extension ordering, and all extensions
+    a real browser sends — to defeat CDN client fingerprinting (Fastly, Akamai, etc.)
+    which otherwise falls back to classical key exchange for bot-like clients.
+    """
+    import random
+
+    # GREASE: browsers insert random dummy values into cipher/extension/group lists.
+    # Absence of GREASE is an immediate bot signal to CDNs.
+    GREASE_VALUES = [
+        0x0a0a, 0x1a1a, 0x2a2a, 0x3a3a, 0x4a4a, 0x5a5a,
+        0x6a6a, 0x7a7a, 0x8a8a, 0x9a9a, 0xaaaa, 0xbaba,
+        0xcaca, 0xdada, 0xeaea, 0xfafa,
+    ]
+    grease = random.choice(GREASE_VALUES)
+
+    # Cipher suites in Chrome order (17 suites + GREASE)
+    cipher_list = [
+        grease,  0x1301, 0x1302, 0x1303,
+        0xc02b,  0xc02f, 0xc02c, 0xc030,
+        0xcca9,  0xcca8, 0xc013, 0xc014,
+        0x009c,  0x009d, 0x002f, 0x0035,
+        0x00ff,
+    ]
+    ciphers_bytes = b"".join(struct.pack("!H", c) for c in cipher_list)
+
     random_bytes = os.urandom(32)
-    session_id = os.urandom(32)
-    ciphers = struct.pack("!HHHH",0x1301,0x1302,0x1303,0x00ff)
-    body = (struct.pack("!H",0x0303) + random_bytes +
-            struct.pack("!B",len(session_id)) + session_id +
-            struct.pack("!H",len(ciphers)) + ciphers +
-            b"\x01\x00" + struct.pack("!H",len(extensions)) + extensions)
-    hs = b"\x01" + struct.pack("!I",len(body))[1:] + body
-    return b"\x16\x03\x01" + struct.pack("!H",len(hs)) + hs
+    session_id   = os.urandom(32)
+
+    # 1. GREASE extension
+    grease_ext = struct.pack("!HH", grease, 0)
+
+    # 2. SNI
+    sni_name = host.encode()
+    sni_body = b"\x00" + struct.pack("!H", len(sni_name)) + sni_name
+    sni_list = struct.pack("!H", len(sni_body)) + sni_body
+    sni_ext  = struct.pack("!HH", 0x0000, len(sni_list)) + sni_list
+
+    # 3. Extended master secret
+    ems_ext = struct.pack("!HH", 0x0017, 0)
+
+    # 4. Renegotiation info
+    reneg_ext = struct.pack("!HHB", 0xff01, 1, 0x00)
+
+    # 5. Supported groups — PQC hybrids first, then classical
+    groups = [
+        grease,
+        0x11ec,   # X25519+ML-KEM-768  (IANA standard)
+        0x6399,   # X25519+ML-KEM-768  (Cloudflare draft)
+        0x11eb,   # SecP256r1+ML-KEM-768
+        0x639a,   # X25519+ML-KEM-1024
+        0x0203,   # ML-KEM-768 pure
+        0x0204,   # ML-KEM-1024 pure
+        0x001D,   # X25519
+        0x001E,   # X448
+        0x0017,   # P-256
+        0x0018,   # P-384
+        0x0019,   # P-521
+        0x0100,   # ffdhe2048
+        0x0101,   # ffdhe3072
+    ]
+    groups_data = b"".join(struct.pack("!H", g) for g in groups)
+    groups_ext  = (struct.pack("!HH", 0x000a, len(groups_data) + 2) +
+                   struct.pack("!H", len(groups_data)) + groups_data)
+
+    # 6. EC point formats
+    ec_points_ext = struct.pack("!HHBB", 0x000b, 2, 1, 0x00)
+
+    # 7. Session ticket (empty)
+    session_ticket_ext = struct.pack("!HH", 0x0023, 0)
+
+    # 8. ALPN — h2 then http/1.1
+    alpn_protocols = b"\x02h2\x08http/1.1"
+    alpn_list      = struct.pack("!H", len(alpn_protocols)) + alpn_protocols
+    alpn_ext       = struct.pack("!HH", 0x0010, len(alpn_list)) + alpn_list
+
+    # 9. OCSP status request
+    ocsp_ext = struct.pack("!HH", 0x0005, 5) + b"\x01\x00\x00\x00\x00"
+
+    # 10. Signature algorithms (Chrome full list)
+    sig_algs = [0x0403, 0x0804, 0x0401, 0x0503, 0x0805,
+                0x0501, 0x0806, 0x0601, 0x0201, 0x0203]
+    sig_data = b"".join(struct.pack("!H", s) for s in sig_algs)
+    sig_ext  = (struct.pack("!HH", 0x000d, len(sig_data) + 2) +
+                struct.pack("!H", len(sig_data)) + sig_data)
+
+    # 11. Supported versions — GREASE + TLS 1.3
+    sv_versions = struct.pack("!HH", grease, 0x0304)
+    sv_ext      = (struct.pack("!HH", 0x002b, len(sv_versions) + 1) +
+                   struct.pack("!B", len(sv_versions)) + sv_versions)
+
+    # 12. Compress certificate — brotli + zlib
+    compress_ext = struct.pack("!HHBHH", 0x001b, 5, 4, 0x0002, 0x0001)
+
+    # 13. PSK key exchange modes
+    psk_ext = struct.pack("!HHBB", 0x002d, 2, 1, 0x01)
+
+    # 14. Key share — X25519 (server can HRR to negotiate PQC group)
+    x25519_pub = os.urandom(32)
+    ks_entry   = struct.pack("!HH", 0x001D, 32) + x25519_pub
+    ks_ext     = (struct.pack("!HH", 0x0033, len(ks_entry) + 2) +
+                  struct.pack("!H", len(ks_entry)) + ks_entry)
+
+    # 15. Trailing GREASE extension
+    grease2     = random.choice([g for g in GREASE_VALUES if g != grease])
+    grease2_ext = struct.pack("!HH", grease2, 0)
+
+    # Assemble in Chrome extension order
+    extensions = (
+        grease_ext + sni_ext + ems_ext + reneg_ext + groups_ext +
+        ec_points_ext + session_ticket_ext + alpn_ext + ocsp_ext +
+        sig_ext + sv_ext + compress_ext + psk_ext + ks_ext + grease2_ext
+    )
+
+    body = (
+        struct.pack("!H", 0x0303)            +
+        random_bytes                         +
+        struct.pack("!B", len(session_id))   +
+        session_id                           +
+        struct.pack("!H", len(ciphers_bytes))+
+        ciphers_bytes                        +
+        b"\x01\x00"                          +
+        struct.pack("!H", len(extensions))   +
+        extensions
+    )
+    hs_msg = b"\x01" + struct.pack("!I", len(body))[1:] + body
+    return b"\x16\x03\x01" + struct.pack("!H", len(hs_msg)) + hs_msg
 
 
-def probe_kex_group(host, port=443, timeout=6):
+def probe_kex_group(host, port=443, timeout=8):
+    """
+    Send a browser-mimicking ClientHello and parse the key_share group
+    from the ServerHello. Handles HelloRetryRequest (HRR).
+    Returns (group_id_int, group_name_str) or (None, error_str) on failure.
+    """
+    HRR_MAGIC = bytes.fromhex(
+        "CF21AD74E59A6111BE1D8C021E65B891"
+        "C2A211167ABB8C5E079E09E2C8A8339C"
+    )
+    probe_error = None
     try:
-        sock = socket.create_connection((host,port),timeout=timeout)
+        sock = socket.create_connection((host, port), timeout=timeout)
         sock.sendall(build_client_hello(host))
         data = b""
-        sock.settimeout(4)
+        sock.settimeout(5)
         try:
-            while len(data) < 4096:
+            while len(data) < 16384:
                 chunk = sock.recv(4096)
-                if not chunk: break
+                if not chunk:
+                    break
                 data += chunk
-                if len(data) > 200: break
+                if len(data) > 1024:
+                    break
         except socket.timeout:
             pass
         sock.close()
+
+        if not data:
+            return None, "probe:no_data"
+
         pos = 0
         while pos < len(data) - 5:
             rec_type = data[pos]
-            rec_len  = struct.unpack("!H",data[pos+3:pos+5])[0]
-            payload  = data[pos+5:pos+5+rec_len]
-            pos     += 5 + rec_len
-            if rec_type != 0x16 or not payload or payload[0] != 0x02:
+            if data[pos+1] != 0x03:
+                pos += 1
                 continue
+            rec_len = struct.unpack("!H", data[pos+3:pos+5])[0]
+            if rec_len > 16384 or pos + 5 + rec_len > len(data):
+                break
+            payload = data[pos+5:pos+5+rec_len]
+            pos    += 5 + rec_len
+            if rec_type != 0x16 or not payload:
+                continue
+            if payload[0] != 0x02:
+                continue
+            # Skip 4-byte hs header + 2-byte version + 32-byte random
             p = 4 + 2 + 32
+            is_hrr = len(payload) >= 36 and (payload[4:36] == HRR_MAGIC)
+            if p >= len(payload):
+                break
             sid_len = payload[p]; p += 1 + sid_len + 2 + 1
-            if p + 2 > len(payload): break
-            ext_total = struct.unpack("!H",payload[p:p+2])[0]
+            if p + 2 > len(payload):
+                break
+            ext_total = struct.unpack("!H", payload[p:p+2])[0]
             p += 2; end = p + ext_total
             while p + 4 <= end:
-                ext_type = struct.unpack("!H",payload[p:p+2])[0]
-                ext_len  = struct.unpack("!H",payload[p+2:p+4])[0]
+                ext_type = struct.unpack("!H", payload[p:p+2])[0]
+                ext_len  = struct.unpack("!H", payload[p+2:p+4])[0]
                 ext_data = payload[p+4:p+4+ext_len]
                 p       += 4 + ext_len
                 if ext_type == 0x0033 and len(ext_data) >= 2:
-                    group_id = struct.unpack("!H",ext_data[0:2])[0]
-                    return group_id, TLS_GROUPS.get(group_id, f"Unknown(0x{group_id:04x})")
-    except Exception:
-        pass
-    return None, None
+                    group_id   = struct.unpack("!H", ext_data[0:2])[0]
+                    group_name = TLS_GROUPS.get(group_id, f"Unknown(0x{group_id:04x})")
+                    return group_id, group_name
+    except socket.timeout:
+        probe_error = "probe:timeout"
+    except ConnectionRefusedError:
+        probe_error = "probe:refused"
+    except Exception as e:
+        probe_error = f"probe:error:{type(e).__name__}"
+    return None, probe_error
 
 
 def parse_cipher_suite(cipher_name):
@@ -565,15 +704,21 @@ def do_scan(host, port=443):
     # KEX group probe (TLS 1.3 only)
     if ver_key == "TLS-1.3":
         kex_id, kex_name = probe_kex_group(host, port)
-        if kex_name:
+        if kex_name and not str(kex_name).startswith("probe:"):
             desc = KEX_DESCRIPTIONS.get(kex_name, f"Key exchange group (IANA 0x{kex_id:04x})").format(id=kex_id)
             meta["kex_group"] = kex_name
             findings.append({"algo": kex_name, "context": desc,
                              "source": "Raw TLS ServerHello → key_share extension",
                              **pqc_lookup(kex_name)})
+        else:
+            meta["kex_probe_error"] = kex_name or "probe:unknown"
+            meta["kex_probe"] = (
+                "Key exchange group could not be determined — the server may be "
+                "filtering non-browser TLS handshakes. The cipher suite KEX below "
+                "is a fallback estimate."
+            )
     else:
         meta["kex_probe"] = f"Skipped — server uses {tls_ver}, not TLS 1.3. TLS 1.2 cannot use PQC hybrid key exchange."
-
     # Cipher suite
     if cipher:
         meta["cipher_suite"] = cipher[0]
