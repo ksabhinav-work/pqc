@@ -965,7 +965,7 @@ function render(data, domain, port) {
           impersonation_count, meta } = data;
 
   // Dynamically learn which domains are PQC-capable
-  if (!hndl_risk) {
+  if (!effectiveHndl) {
     PQC_DOMAINS.add(domain);
     markPqcPills();
   }
@@ -973,13 +973,19 @@ function render(data, domain, port) {
   const chainBreakdown = (meta.cert_chain || []).map(c =>
     `${c.role === 'leaf' ? "🌿 <span class='jargon' data-tip='Leaf certificate'>Leaf certificate</span>" : c.role === 'intermediate' ? "🔗 <span class='jargon' data-tip='Intermediate CA'>Intermediate CA</span>" : "🏛 <span class='jargon' data-tip='Root CA'>Root CA</span>"}: ${c.subject || 'N/A'}`
   ).join("<br>");
-  const v = verdictFor(portfolio_score, hndl_risk, impersonation_risk, findings);
+  // If the CDN confirms browser clients get PQC, rate on that basis.
+  // The scanner sees X25519 because CDNs fingerprint clients and reserve
+  // ML-KEM for recognised browsers. The rating should reflect end-user
+  // browser experience, not the scanner's raw probe result.
+  const effectiveHndl = (meta.browser_pqc) ? false : hndl_risk;
+  const v = verdictFor(portfolio_score, effectiveHndl, impersonation_risk, findings);
   let html = "";
 
   // CDN browser note for verdict
   const cdnBrowserNote = (meta.cdn_provider && meta.browser_pqc)
     ? `<div style="margin-top:8px;font-size:12px;color:#14532d;font-style:italic">
-        🌐 Browser clients on ${meta.cdn_provider} likely see <strong>A</strong> — X25519+ML-KEM-768 is active for browser traffic. This rating reflects non-browser clients.
+        🌐 <strong>${meta.cdn_provider}</strong> — browser clients receive X25519+ML-KEM-768 automatically.
+        This scanner connects as a non-browser client and negotiated X25519 — the grade reflects browser experience.
        </div>`
     : "";
 
@@ -1055,8 +1061,8 @@ function render(data, domain, port) {
     <div class="info-note" style="border-left-color:#92400e;background:#fffbeb">
       🌐 <strong>CDN detected: ${meta.cdn_provider}.</strong> ${meta.browser_pqc_note || ""}
     </div>` : "")}
-    ${kexFindings.map(f => findingCard(f, null, hndl_risk)).join("")}
-    ${categorySummary("kex", kexFindings, hndl_risk, meta)}
+    ${kexFindings.map(f => findingCard(f, null, effectiveHndl)).join("")}
+    ${categorySummary("kex", kexFindings, effectiveHndl, meta)}
   </div>`;
 
   // Section 2
@@ -1117,7 +1123,7 @@ function render(data, domain, port) {
     </div>
     ${meta.certificate ? certBlock(meta.certificate, meta.cert_chain) : ""}
     ${certFindings.map(f => findingCard(f, meta.cert_chain, hndl_risk)).join("")}
-    ${categorySummary("cert", certFindings, hndl_risk, meta)}
+    ${categorySummary("cert", certFindings, effectiveHndl, meta)}
   </div>`;
 
   // Section 3
@@ -1177,8 +1183,8 @@ function render(data, domain, port) {
           </div>
         </div>
       </div>
-      ${symFindings.map(f => findingCard(f, null, hndl_risk)).join("")}
-      ${categorySummary("sym", symFindings, hndl_risk, meta)}
+      ${symFindings.map(f => findingCard(f, null, effectiveHndl)).join("")}
+      ${categorySummary("sym", symFindings, effectiveHndl, meta)}
     </div>`;
   }
 
@@ -1193,7 +1199,7 @@ function render(data, domain, port) {
       </div>
     </div>`;
 
-  if (hndl_risk) {
+  if (effectiveHndl) {
     html += `
     <div class="action-card" style="border-left-color:#9a3412;background:#fff7ed">
       <div class="action-title" style="color:#9a3412">🔴 Harvest Now, Decrypt Later — The Clock is Already Running</div>
