@@ -329,20 +329,11 @@ def build_client_hello(host):
     return b"\x16\x03\x01" + struct.pack("!H", len(hs_msg)) + hs_msg
 
 
-def probe_kex_group(host, port=443, timeout=8):
-    """
-    Send a browser-mimicking ClientHello and parse the key_share group
-    from the ServerHello. Handles HelloRetryRequest (HRR).
-    Returns (group_id_int, group_name_str) or (None, error_str) on failure.
-    """
-    HRR_MAGIC = bytes.fromhex(
-        "CF21AD74E59A6111BE1D8C021E65B891"
-        "C2A211167ABB8C5E079E09E2C8A8339C"
-    )
-    probe_error = None
+def _send_probe(host, port, hello_bytes, timeout=8):
+    """Send raw ClientHello, return (data_bytes, error_str)."""
     try:
         sock = socket.create_connection((host, port), timeout=timeout)
-        sock.sendall(build_client_hello(host))
+        sock.sendall(hello_bytes)
         data = b""
         sock.settimeout(5)
         try:
@@ -351,59 +342,136 @@ def probe_kex_group(host, port=443, timeout=8):
                 if not chunk:
                     break
                 data += chunk
-                if len(data) > 1024:
+                if len(data) > 4096:
                     break
         except socket.timeout:
             pass
         sock.close()
-
-        if not data:
-            return None, "probe:no_data"
-
-        pos = 0
-        while pos < len(data) - 5:
-            rec_type = data[pos]
-            if data[pos+1] != 0x03:
-                pos += 1
-                continue
-            rec_len = struct.unpack("!H", data[pos+3:pos+5])[0]
-            if rec_len > 16384 or pos + 5 + rec_len > len(data):
-                break
-            payload = data[pos+5:pos+5+rec_len]
-            pos    += 5 + rec_len
-            if rec_type != 0x16 or not payload:
-                continue
-            if payload[0] != 0x02:
-                continue
-            # Skip 4-byte hs header + 2-byte version + 32-byte random
-            p = 4 + 2 + 32
-            # HRR magic is in the random field: bytes 6-38 of the hs message body
-            # payload[0]=type, [1:4]=length, [4:6]=legacy_version, [6:38]=random
-            is_hrr = len(payload) >= 38 and (payload[6:38] == HRR_MAGIC)
-            if p >= len(payload):
-                break
-            sid_len = payload[p]; p += 1 + sid_len + 2 + 1
-            if p + 2 > len(payload):
-                break
-            ext_total = struct.unpack("!H", payload[p:p+2])[0]
-            p += 2; end = p + ext_total
-            while p + 4 <= end:
-                ext_type = struct.unpack("!H", payload[p:p+2])[0]
-                ext_len  = struct.unpack("!H", payload[p+2:p+4])[0]
-                ext_data = payload[p+4:p+4+ext_len]
-                p       += 4 + ext_len
-                if ext_type == 0x0033 and len(ext_data) >= 2:
-                    group_id   = struct.unpack("!H", ext_data[0:2])[0]
-                    group_name = TLS_GROUPS.get(group_id, f"Unknown(0x{group_id:04x})")
-                    return group_id, group_name
+        return data, None
     except socket.timeout:
-        probe_error = "probe:timeout"
+        return b"", "probe:timeout"
     except ConnectionRefusedError:
-        probe_error = "probe:refused"
+        return b"", "probe:refused"
     except Exception as e:
-        probe_error = f"probe:error:{type(e).__name__}"
-    return None, probe_error
+        return b"", f"probe:error:{type(e).__name__}"
 
+
+def _parse_server_hello_group(data):
+    """
+    Walk TLS records, find ServerHello/HRR, extract key_share group.
+    Returns (group_id, group_name), or (None, "probe:alert:X") on TLS alert,
+    or (None, None) if nothing found.
+    """
+    HRR_MAGIC = bytes.fromhex(
+        "CF21AD74E59A6111BE1D8C021E65B891"
+        "C2A211167ABB8C5E079E09E2C8A8339C"
+    )
+    TLS_ALERT_DESC = {
+        0:"close_notify", 10:"unexpected_message", 20:"bad_record_mac",
+        40:"handshake_failure", 42:"bad_certificate", 47:"illegal_parameter",
+        50:"decode_error", 51:"decrypt_error", 70:"protocol_version",
+        71:"insufficient_security", 80:"internal_error", 86:"inappropriate_fallback",
+        109:"missing_extension", 110:"unsupported_extension", 116:"certificate_required",
+    }
+    pos = 0
+    while pos < len(data) - 5:
+        rec_type = data[pos]
+        if data[pos+1] != 0x03:
+            pos += 1; continue
+        rec_len = struct.unpack("!H", data[pos+3:pos+5])[0]
+        if rec_len > 16384 or pos + 5 + rec_len > len(data):
+            break
+        payload = data[pos+5:pos+5+rec_len]
+        pos += 5 + rec_len
+
+        # TLS Alert (0x15) — server rejected us, capture why
+        if rec_type == 0x15 and len(payload) >= 2:
+            desc = TLS_ALERT_DESC.get(payload[1], f"alert_{payload[1]}")
+            return None, f"probe:alert:{desc}"
+
+        if rec_type != 0x16 or not payload or payload[0] != 0x02:
+            continue
+
+        # ServerHello: [0]=type [1:4]=len [4:6]=legacy_ver [6:38]=random
+        p = 4 + 2 + 32
+        if p >= len(payload): break
+        sid_len = payload[p]; p += 1 + sid_len + 2 + 1
+        if p + 2 > len(payload): break
+        ext_total = struct.unpack("!H", payload[p:p+2])[0]
+        p += 2; end = p + ext_total
+        while p + 4 <= end:
+            ext_type = struct.unpack("!H", payload[p:p+2])[0]
+            ext_len  = struct.unpack("!H", payload[p+2:p+4])[0]
+            ext_data = payload[p+4:p+4+ext_len]
+            p += 4 + ext_len
+            if ext_type == 0x0033 and len(ext_data) >= 2:
+                gid = struct.unpack("!H", ext_data[0:2])[0]
+                return gid, TLS_GROUPS.get(gid, f"Unknown(0x{gid:04x})")
+    return None, None
+
+
+def probe_kex_group(host, port=443, timeout=8):
+    """
+    Two-attempt probe strategy:
+    Attempt 1: Full browser-mimicking ClientHello with PQC key shares.
+               Detects PQC groups on Cloudflare, Fastly, etc.
+               If server sends a TLS alert (rejecting the large hello),
+               fall through to attempt 2.
+    Attempt 2: Minimal X25519-only ClientHello.
+               Still advertises PQC groups in supported_groups extension
+               so server can HRR back to request one.
+               Falls back gracefully to reporting X25519 if no PQC.
+    Returns (group_id_int, group_name_str) or (None, error_str).
+    """
+    # ── Attempt 1: PQC ClientHello ────────────────────────────────────────────
+    data1, err1 = _send_probe(host, port, build_client_hello(host), timeout)
+    if err1:
+        return None, err1
+    if data1:
+        gid, gname = _parse_server_hello_group(data1)
+        if gid is not None:
+            return gid, gname
+        alert_err = gname  # may be "probe:alert:handshake_failure" etc.
+    else:
+        alert_err = "probe:no_data"
+
+    # ── Attempt 2: minimal X25519 ClientHello ─────────────────────────────────
+    sni_name = host.encode()
+    sni_body = b"\x00" + struct.pack("!H", len(sni_name)) + sni_name
+    sni_list = struct.pack("!H", len(sni_body)) + sni_body
+    sni_ext  = struct.pack("!HH", 0x0000, len(sni_list)) + sni_list
+    groups   = [0x11ec, 0x6399, 0x001D, 0x0017, 0x0018]
+    g_data   = b"".join(struct.pack("!H", g) for g in groups)
+    grp_ext  = (struct.pack("!HH", 0x000a, len(g_data)+2) +
+                struct.pack("!H", len(g_data)) + g_data)
+    sv_ext   = struct.pack("!HHHH", 0x002b, 4, 2, 0x0304)
+    sig_data = struct.pack("!HHHHHH", 0x0403, 0x0804, 0x0401, 0x0503, 0x0805, 0x0806)
+    sig_ext  = (struct.pack("!HH", 0x000d, len(sig_data)+2) +
+                struct.pack("!H", len(sig_data)) + sig_data)
+    ks_entry = struct.pack("!HH", 0x001D, 32) + os.urandom(32)
+    ks_ext   = (struct.pack("!HH", 0x0033, len(ks_entry)+2) +
+                struct.pack("!H", len(ks_entry)) + ks_entry)
+    psk_ext  = struct.pack("!HHBB", 0x002d, 2, 1, 0x01)
+    exts2    = sni_ext + grp_ext + sv_ext + sig_ext + ks_ext + psk_ext
+    ciphers2 = struct.pack("!HHHH", 0x1301, 0x1302, 0x1303, 0x00ff)
+    body2    = (struct.pack("!H", 0x0303) + os.urandom(32) +
+                struct.pack("!B", 32) + os.urandom(32) +
+                struct.pack("!H", len(ciphers2)) + ciphers2 +
+                b"\x01\x00" + struct.pack("!H", len(exts2)) + exts2)
+    hs2      = b"\x01" + struct.pack("!I", len(body2))[1:] + body2
+    hello2   = b"\x16\x03\x01" + struct.pack("!H", len(hs2)) + hs2
+
+    data2, err2 = _send_probe(host, port, hello2, timeout)
+    if err2:
+        return None, alert_err or err2
+    if data2:
+        gid, gname = _parse_server_hello_group(data2)
+        if gid is not None:
+            return gid, gname
+        if gname and gname.startswith("probe:alert:"):
+            return None, gname
+
+    return None, alert_err or "probe:no_server_hello"
 
 
 def probe_tls12_kex_curve(host, port=443, timeout=8):
