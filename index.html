@@ -821,12 +821,30 @@ function threatStyle(threat) {
 }
 
 function verdictFor(score, hndl, imp, findings) {
-  // Detect if leaf cert uses a quantum-safe signature algorithm
+  const fs = findings || [];
+
+  // Quantum-safe cert: leaf uses ML-DSA / SLH-DSA / FN-DSA
   const PQC_SIG_PREFIXES = ["ML-DSA","SLH-DSA","FN-DSA"];
-  const certPQC = (findings || []).some(f =>
+  const certPQC = fs.some(f =>
     f.ftype === "sig_key" && f.context && f.context.includes("Leaf") &&
     PQC_SIG_PREFIXES.some(p => f.algo && f.algo.startsWith(p))
   );
+
+  // Classically weak today (not just quantum-vulnerable — actually broken or
+  // deprecated by classical standards). Drives Grade C vs Grade B.
+  const CLASSICALLY_WEAK = new Set([
+    "SHA-1","MD5","RC4","3DES","DES","SSL-2.0","SSL-3.0","TLS-1.0","TLS-1.1",
+    "RSA-512","RSA-1024","DH-512","DH-1024","ECDH-P192","ECDSA-P192","DSA-1024",
+  ]);
+  const certClassicallyWeak = fs.some(f =>
+    f.category === "Signature" || f.category === "Hash" || f.category === "Symmetric"
+    ? CLASSICALLY_WEAK.has(f.algo) && f.threat === "CRITICAL"
+    : false
+  );
+
+  // Broken / withdrawn algorithms present
+  const hasBroken = fs.some(f => f.threat === "CRITICAL" &&
+    (f.category === "Symmetric" || f.category === "Hash" || f.category === "Protocol"));
 
   // A+: quantum-safe KEX + quantum-safe cert
   if (!hndl && certPQC)
@@ -840,20 +858,24 @@ function verdictFor(score, hndl, imp, findings) {
       phrase:"No harvest risk, impersonation risk remains",
       plain:"Traffic recorded today cannot be decrypted by future quantum computers. However, the certificate still uses classical algorithms — once quantum computers arrive, an attacker could forge it and impersonate this site." };
 
-  // B: classical KEX, cert decent, nothing broken
-  if (hndl && score >= 3)
+  // B: classical KEX, cert is quantum-vulnerable but fine by today's standards
+  // This is the normal state of the internet in 2026 — RSA-2048/ECDSA certs,
+  // no SHA-1, no broken ciphers. The portfolio_score naive average is NOT used
+  // here because TLS-Downgrade and X25519 both have low ratings that unfairly
+  // drag the score below 3, producing a misleading Grade C.
+  if (hndl && !certClassicallyWeak && !hasBroken)
     return { grade:"B", color:"#92400e", bg:"#fffbeb", border:"#fcd34d",
       phrase:"Harvest risk active, certificates vulnerable in quantum era",
-      plain:"Encrypted traffic from today could be stored and decrypted once quantum computers arrive. The certificate uses classical algorithms — it is fine by today's standards but will need upgrading when quantum-safe certificates become available from certificate authorities." };
+      plain:"Encrypted traffic from today could be stored and decrypted once quantum computers arrive. The certificate uses classical algorithms — it is fine by today\'s standards but will need upgrading when quantum-safe certificates become available from certificate authorities." };
 
-  // C: classical KEX, weak cert
-  if (hndl && score >= 1)
+  // C: classical KEX + cert or cipher classically weak today
+  if (hndl && (certClassicallyWeak || hasBroken))
     return { grade:"C", color:"#9a3412", bg:"#fff7ed", border:"#fdba74",
       phrase:"Harvest risk active, certificate weak today",
-      plain:"Encrypted traffic can be harvested now and decrypted later. The certificate also uses outdated algorithms that are weak by today's standards — this is an immediate concern, independent of quantum computers." };
+      plain:"Encrypted traffic can be harvested now and decrypted later. The certificate or cipher also uses algorithms that are weak by today\'s classical standards — this is an immediate concern, independent of quantum computers." };
 
-  // D: deprecated but not withdrawn
-  if (score >= 1)
+  // D: no HNDL risk but deprecated/weak algorithms present
+  if (hasBroken || certClassicallyWeak)
     return { grade:"D", color:"#7c2d12", bg:"#fef2f2", border:"#fca5a5",
       phrase:"Weak encryption, multiple vulnerabilities",
       plain:"This site uses outdated encryption with multiple weaknesses — a full security upgrade is needed, independent of quantum computers." };
@@ -954,6 +976,13 @@ function render(data, domain, port) {
   const v = verdictFor(portfolio_score, hndl_risk, impersonation_risk, findings);
   let html = "";
 
+  // CDN browser note for verdict
+  const cdnBrowserNote = (meta.cdn_provider && meta.browser_pqc)
+    ? `<div style="margin-top:8px;font-size:12px;color:#14532d;font-style:italic">
+        🌐 Browser clients on ${meta.cdn_provider} likely see <strong>A</strong> — X25519+ML-KEM-768 is active for browser traffic. This rating reflects non-browser clients.
+       </div>`
+    : "";
+
   // Verdict
   html += `
   <div class="verdict-card fade-up" style="background:${v.bg};border-color:${v.border};border-left-color:${v.color}">
@@ -962,6 +991,7 @@ function render(data, domain, port) {
       <div class="verdict-phrase" style="color:${v.color}">${v.phrase}</div>
       <div class="verdict-domain">${domain}:${port} · <span class="jargon" data-tip-tls="1">${meta.tls_version||"?"}</span> · IP: ${meta.ip||"?"}</div>
       <div class="verdict-plain">${v.plain}</div>
+      ${cdnBrowserNote}
     </div>
   </div>`;
 
@@ -1013,9 +1043,20 @@ function render(data, domain, port) {
         </div>
       </div>
     </div>
-    ${meta.kex_probe ? `<div class="info-note">ℹ️ <strong>TLS 1.3 not available:</strong> ${meta.kex_probe}</div>` : ""}
+    ${meta.kex_probe ? `<div class="info-note">ℹ️ ${meta.kex_probe}</div>` : ""}
+    ${meta.cdn_provider && meta.browser_pqc ? `
+    <div class="info-note" style="border-left-color:#14532d;background:#f0fdf4">
+      🌐 <strong>CDN detected: ${meta.cdn_provider}.</strong> ${meta.browser_pqc_note}
+      This scanner connects as a non-browser client and sees <strong>X25519</strong>.
+      Your browser likely negotiates <strong>X25519+ML-KEM-768</strong> — you can verify via
+      browser DevTools → Security tab.
+      The rating below reflects what API clients, automated systems, and monitoring tools see.
+    </div>` : (meta.cdn_provider ? `
+    <div class="info-note" style="border-left-color:#92400e;background:#fffbeb">
+      🌐 <strong>CDN detected: ${meta.cdn_provider}.</strong> ${meta.browser_pqc_note || ""}
+    </div>` : "")}
     ${kexFindings.map(f => findingCard(f, null, hndl_risk)).join("")}
-    ${categorySummary("kex", kexFindings, hndl_risk)}
+    ${categorySummary("kex", kexFindings, hndl_risk, meta)}
   </div>`;
 
   // Section 2
@@ -1076,7 +1117,7 @@ function render(data, domain, port) {
     </div>
     ${meta.certificate ? certBlock(meta.certificate, meta.cert_chain) : ""}
     ${certFindings.map(f => findingCard(f, meta.cert_chain, hndl_risk)).join("")}
-    ${categorySummary("cert", certFindings, hndl_risk, meta.cert_chain)}
+    ${categorySummary("cert", certFindings, hndl_risk, meta)}
   </div>`;
 
   // Section 3
@@ -1137,7 +1178,7 @@ function render(data, domain, port) {
         </div>
       </div>
       ${symFindings.map(f => findingCard(f, null, hndl_risk)).join("")}
-      ${categorySummary("sym", symFindings, hndl_risk)}
+      ${categorySummary("sym", symFindings, hndl_risk, meta)}
     </div>`;
   }
 
@@ -1265,7 +1306,8 @@ function render(data, domain, port) {
 }
 
 
-function categorySummary(category, findings, hndl_risk, certChain) {
+function categorySummary(category, findings, hndl_risk, meta) {
+  meta = meta || {};
   let title = "", body = "", color = "#5a5040", bg = "#f5f0e8", border = "#c8bfaa";
 
   if (category === "kex") {
@@ -1275,13 +1317,34 @@ function categorySummary(category, findings, hndl_risk, certChain) {
       color = "#14532d"; bg = "#f0fdf4"; border = "#86efac";
     } else {
       title = "⚠️ Action available — enable quantum-safe key exchange";
-      body  = "Enable <strong>TLS 1.3</strong> with the <strong>X25519+ML-KEM-768</strong> hybrid group (IANA 0x11ec). Major CDNs — Cloudflare, Fastly, AWS CloudFront — already support this. If you use one of these, it may be a single toggle. This is the single most impactful step available today.";
+
+      // CDN path
+      let cdn_block = "";
+      if (meta.cdn_provider && meta.browser_pqc) {
+        cdn_block = `<strong>Via ${meta.cdn_provider} (already active for browsers):</strong> Browser clients already receive X25519+ML-KEM-768. No change needed for browser-facing traffic. To extend PQC to API clients and automated systems, check CDN settings for non-browser TLS fingerprint policies.<br><br>`;
+      } else if (meta.cdn_provider) {
+        cdn_block = `<strong>Via ${meta.cdn_provider}:</strong> Enable X25519+ML-KEM-768 (IANA 0x11ec) in your CDN distribution or property settings.<br><br>`;
+      } else {
+        cdn_block = `<strong>Via CDN (easiest path):</strong> Cloudflare, Fastly, and AWS CloudFront already support X25519+ML-KEM-768 — for Cloudflare it is enabled by default; for CloudFront it requires enabling in distribution settings.<br><br>`;
+      }
+
+      // Direct server config path
+      const server_block =
+        `<strong>On your own server/load balancer (for entities running their own infrastructure):</strong><br>` +
+        `• <strong>nginx ≥ 1.27 / OpenSSL ≥ 3.2:</strong> add <code>ssl_ecdh_curve X25519MLKEM768:X25519</code> in your server block.<br>` +
+        `• <strong>Apache httpd ≥ 2.4.60:</strong> set <code>SSLOpenSSLConfCmd Groups X25519MLKEM768:X25519</code>.<br>` +
+        `• <strong>Java (JDK 24+ / Bouncy Castle):</strong> ML-KEM support via <code>jdk.tls.namedGroups=x25519_mlkem768</code> JVM property.<br>` +
+        `• <strong>F5 BIG-IP / Citrix NetScaler:</strong> configure named groups in the SSL profile — consult your vendor's PQC readiness guide.<br>` +
+        `• <strong>AWS ALB / NLB:</strong> enable via security policy — select a policy that includes <code>TLS13-X25519MLKEM768</code> groups.<br><br>` +
+        `This is the single most impactful step available today and requires no change to certificates or application code.`;
+
+      body  = cdn_block + server_block;
       color = "#9a3412"; bg = "#fff7ed"; border = "#fdba74";
     }
   }
 
   else if (category === "cert") {
-    // Check chain composition
+    const certChain = meta.cert_chain || [];
     const hasLeaf = findings.some(f => f.context && f.context.includes("Leaf"));
     const hasIntermediate = findings.some(f => f.context && f.context.includes("Intermediate"));
     const hasRoot = findings.some(f => f.context && f.context.includes("Root"));
