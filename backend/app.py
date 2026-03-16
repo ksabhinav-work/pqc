@@ -352,14 +352,10 @@ def _send_probe(host, port, hello_bytes, timeout=8):
 
 def _parse_server_hello_group(data):
     """
-    Walk TLS records, find ServerHello/HRR, extract key_share group.
-    Returns (group_id, group_name), or (None, "probe:alert:X") on TLS alert,
+    Walk TLS records, find ServerHello, extract key_share group.
+    Returns (group_id, group_name), (None, "probe:alert:X") on TLS alert,
     or (None, None) if nothing found.
     """
-    HRR_MAGIC = bytes.fromhex(
-        "CF21AD74E59A6111BE1D8C021E65B891"
-        "C2A211167ABB8C5E079E09E2C8A8339C"
-    )
     TLS_ALERT_DESC = {
         0:"close_notify", 10:"unexpected_message", 20:"bad_record_mac",
         40:"handshake_failure", 42:"bad_certificate", 47:"illegal_parameter",
@@ -378,7 +374,7 @@ def _parse_server_hello_group(data):
         payload = data[pos+5:pos+5+rec_len]
         pos += 5 + rec_len
 
-        # TLS Alert (0x15) — server rejected us, capture why
+        # TLS Alert (0x15)
         if rec_type == 0x15 and len(payload) >= 2:
             desc = TLS_ALERT_DESC.get(payload[1], f"alert_{payload[1]}")
             return None, f"probe:alert:{desc}"
@@ -404,72 +400,147 @@ def _parse_server_hello_group(data):
     return None, None
 
 
+def _build_pqc_hello(host):
+    """
+    Minimal but correct TLS 1.3 ClientHello with a single PQC key share.
+    Deliberately avoids GREASE and non-essential extensions to prevent
+    decode_error from CDNs with strict parsers (e.g. Fastly/GitHub Pages).
+    Sends X25519+ML-KEM-768 (0x11ec, 1216 bytes) + X25519 (32 bytes).
+    """
+    sni_name = host.encode()
+    sni_body = b"\x00" + struct.pack("!H", len(sni_name)) + sni_name
+    sni_list = struct.pack("!H", len(sni_body)) + sni_body
+    sni_ext  = struct.pack("!HH", 0x0000, len(sni_list)) + sni_list
+
+    # supported_groups: PQC hybrids + classical
+    groups   = [0x11ec, 0x6399, 0x11eb, 0x001D, 0x0017, 0x0018]
+    g_data   = b"".join(struct.pack("!H", g) for g in groups)
+    grp_ext  = (struct.pack("!HH", 0x000a, len(g_data)+2) +
+                struct.pack("!H", len(g_data)) + g_data)
+
+    # supported_versions: TLS 1.3 only
+    # Format: type(2) + ext_len(2) + list_len_byte(1) + version(2)
+    sv_ext   = (struct.pack("!HH", 0x002b, 3) +
+                struct.pack("!B", 2) +
+                struct.pack("!H", 0x0304))
+
+    # signature_algorithms
+    sig_algs = [0x0403, 0x0804, 0x0401, 0x0503, 0x0805, 0x0501, 0x0806, 0x0601]
+    sig_data = b"".join(struct.pack("!H", s) for s in sig_algs)
+    sig_ext  = (struct.pack("!HH", 0x000d, len(sig_data)+2) +
+                struct.pack("!H", len(sig_data)) + sig_data)
+
+    # psk_key_exchange_modes
+    psk_ext  = struct.pack("!HHBB", 0x002d, 2, 1, 0x01)
+
+    # key_share: PQC (0x11ec, 1216 bytes) + X25519 (32 bytes)
+    ks_pqc   = struct.pack("!HH", 0x11ec, 1216) + os.urandom(1216)
+    ks_x25519= struct.pack("!HH", 0x001D, 32)   + os.urandom(32)
+    ks_list  = ks_pqc + ks_x25519
+    ks_ext   = (struct.pack("!HH", 0x0033, len(ks_list)+2) +
+                struct.pack("!H", len(ks_list)) + ks_list)
+
+    extensions = sni_ext + grp_ext + sv_ext + sig_ext + psk_ext + ks_ext
+
+    ciphers = struct.pack("!HHHH", 0x1301, 0x1302, 0x1303, 0x00ff)
+    session_id = os.urandom(32)
+    body = (
+        struct.pack("!H", 0x0303) +
+        os.urandom(32) +
+        struct.pack("!B", len(session_id)) + session_id +
+        struct.pack("!H", len(ciphers)) + ciphers +
+        b"\x01\x00" +
+        struct.pack("!H", len(extensions)) + extensions
+    )
+    hs_msg = b"\x01" + struct.pack("!I", len(body))[1:] + body
+    return b"\x16\x03\x01" + struct.pack("!H", len(hs_msg)) + hs_msg
+
+
+def _build_x25519_hello(host):
+    """
+    Minimal TLS 1.3 ClientHello with X25519-only key share.
+    Used as fallback if PQC hello is rejected.
+    Still advertises PQC groups so server can HRR.
+    """
+    sni_name = host.encode()
+    sni_body = b"\x00" + struct.pack("!H", len(sni_name)) + sni_name
+    sni_list = struct.pack("!H", len(sni_body)) + sni_body
+    sni_ext  = struct.pack("!HH", 0x0000, len(sni_list)) + sni_list
+
+    groups   = [0x11ec, 0x6399, 0x001D, 0x0017, 0x0018]
+    g_data   = b"".join(struct.pack("!H", g) for g in groups)
+    grp_ext  = (struct.pack("!HH", 0x000a, len(g_data)+2) +
+                struct.pack("!H", len(g_data)) + g_data)
+
+    # supported_versions: correct format — list_len is 1 byte
+    sv_ext   = (struct.pack("!HH", 0x002b, 3) +
+                struct.pack("!B", 2) +
+                struct.pack("!H", 0x0304))
+
+    sig_algs = [0x0403, 0x0804, 0x0401, 0x0503, 0x0805, 0x0806]
+    sig_data = b"".join(struct.pack("!H", s) for s in sig_algs)
+    sig_ext  = (struct.pack("!HH", 0x000d, len(sig_data)+2) +
+                struct.pack("!H", len(sig_data)) + sig_data)
+
+    psk_ext  = struct.pack("!HHBB", 0x002d, 2, 1, 0x01)
+
+    ks_entry = struct.pack("!HH", 0x001D, 32) + os.urandom(32)
+    ks_ext   = (struct.pack("!HH", 0x0033, len(ks_entry)+2) +
+                struct.pack("!H", len(ks_entry)) + ks_entry)
+
+    extensions = sni_ext + grp_ext + sv_ext + sig_ext + psk_ext + ks_ext
+    ciphers = struct.pack("!HHHH", 0x1301, 0x1302, 0x1303, 0x00ff)
+    session_id = os.urandom(32)
+    body = (
+        struct.pack("!H", 0x0303) +
+        os.urandom(32) +
+        struct.pack("!B", len(session_id)) + session_id +
+        struct.pack("!H", len(ciphers)) + ciphers +
+        b"\x01\x00" +
+        struct.pack("!H", len(extensions)) + extensions
+    )
+    hs_msg = b"\x01" + struct.pack("!I", len(body))[1:] + body
+    return b"\x16\x03\x01" + struct.pack("!H", len(hs_msg)) + hs_msg
+
+
 def probe_kex_group(host, port=443, timeout=8):
     """
-    Two-attempt probe strategy:
-    Attempt 1: Full browser-mimicking ClientHello with PQC key shares.
-               Detects PQC groups on Cloudflare, Fastly, etc.
-               If server sends a TLS alert (rejecting the large hello),
-               fall through to attempt 2.
-    Attempt 2: Minimal X25519-only ClientHello.
-               Still advertises PQC groups in supported_groups extension
-               so server can HRR back to request one.
-               Falls back gracefully to reporting X25519 if no PQC.
-    Returns (group_id_int, group_name_str) or (None, error_str).
+    Three-attempt probe strategy:
+    Attempt 1: Minimal PQC ClientHello (0x11ec key share, essential extensions only).
+               No GREASE — avoids decode_error from strict CDN parsers like Fastly.
+    Attempt 2: Browser-mimicking ClientHello (GREASE, full extensions).
+               For CDNs that fingerprint clients and require browser-like hellos.
+    Attempt 3: X25519-only ClientHello.
+               Fallback — at minimum tells us the classical group negotiated.
+    Returns (group_id, group_name) or (None, error_str).
     """
-    # ── Attempt 1: PQC ClientHello ────────────────────────────────────────────
-    data1, err1 = _send_probe(host, port, build_client_hello(host), timeout)
+    # Attempt 1: minimal PQC hello
+    data1, err1 = _send_probe(host, port, _build_pqc_hello(host), timeout)
     if err1:
         return None, err1
     if data1:
         gid, gname = _parse_server_hello_group(data1)
         if gid is not None:
             return gid, gname
-        alert_err = gname  # may be "probe:alert:handshake_failure" etc.
+        alert1 = gname  # e.g. "probe:alert:decode_error" or None
     else:
-        alert_err = "probe:no_data"
+        alert1 = "probe:no_data"
 
-    # ── Attempt 2: classical-only ClientHello ────────────────────────────────
-    # NO PQC groups in supported_groups — critical.
-    # If PQC groups are advertised without a key share, Fastly sends an HRR
-    # requesting one — a round-trip we don't implement here.
-    # With classical-only groups the server picks X25519 and responds with
-    # a plain ServerHello we can parse in one round-trip.
-    sni_name = host.encode()
-    sni_body = b"\x00" + struct.pack("!H", len(sni_name)) + sni_name
-    sni_list = struct.pack("!H", len(sni_body)) + sni_body
-    sni_ext  = struct.pack("!HH", 0x0000, len(sni_list)) + sni_list
-    groups2  = [0x001D, 0x0017, 0x0018, 0x0019]   # classical only, no PQC
-    g_data2  = b"".join(struct.pack("!H", g) for g in groups2)
-    grp_ext  = (struct.pack("!HH", 0x000a, len(g_data2)+2) +
-                struct.pack("!H", len(g_data2)) + g_data2)
-    sv_ext   = struct.pack("!HHB", 0x002b, 3, 2) + struct.pack("!H", 0x0304)
-    sig_data = struct.pack("!HHHHHH", 0x0403, 0x0804, 0x0401, 0x0503, 0x0805, 0x0806)
-    sig_ext  = (struct.pack("!HH", 0x000d, len(sig_data)+2) +
-                struct.pack("!H", len(sig_data)) + sig_data)
-    ks_entry = struct.pack("!HH", 0x001D, 32) + os.urandom(32)
-    ks_ext   = (struct.pack("!HH", 0x0033, len(ks_entry)+2) +
-                struct.pack("!H", len(ks_entry)) + ks_entry)
-    exts2    = sni_ext + grp_ext + sv_ext + sig_ext + ks_ext
-    ciphers2 = struct.pack("!HHHH", 0x1301, 0x1302, 0x1303, 0x00ff)
-    body2    = (struct.pack("!H", 0x0303) + os.urandom(32) +
-                struct.pack("!B", 32) + os.urandom(32) +
-                struct.pack("!H", len(ciphers2)) + ciphers2 +
-                b"\x01\x00" + struct.pack("!H", len(exts2)) + exts2)
-    hs2      = b"\x01" + struct.pack("!I", len(body2))[1:] + body2
-    hello2   = b"\x16\x03\x01" + struct.pack("!H", len(hs2)) + hs2
-
-    data2, err2 = _send_probe(host, port, hello2, timeout)
-    if err2:
-        return None, alert_err or err2
-    if data2:
+    # Attempt 2: browser-mimicking hello (GREASE + full extensions, X25519 key share only)
+    data2, err2 = _send_probe(host, port, build_client_hello(host), timeout)
+    if not err2 and data2:
         gid, gname = _parse_server_hello_group(data2)
         if gid is not None:
             return gid, gname
-        if gname and gname.startswith("probe:alert:"):
-            return None, gname
 
-    return None, alert_err or "probe:no_server_hello"
+    # Attempt 3: minimal X25519-only hello
+    data3, err3 = _send_probe(host, port, _build_x25519_hello(host), timeout)
+    if not err3 and data3:
+        gid, gname = _parse_server_hello_group(data3)
+        if gid is not None:
+            return gid, gname
+
+    return None, alert1 or err2 or err3 or "probe:no_server_hello"
 
 
 def probe_tls12_kex_curve(host, port=443, timeout=8):
