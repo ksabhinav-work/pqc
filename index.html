@@ -1325,21 +1325,12 @@ function categorySummary(category, findings, hndl_risk, meta) {
     } else {
       title = "⚠️ Action available — enable quantum-safe key exchange";
 
-      // CDN path
-      let cdn_block = "";
-      if (meta.cdn_provider && meta.browser_pqc) {
-        cdn_block = `<strong>Via ${meta.cdn_provider} (already active for browsers):</strong> Browser clients already receive X25519+ML-KEM-768. No change needed for browser-facing traffic. To extend PQC to API clients and automated systems, check CDN settings for non-browser TLS fingerprint policies.<br><br>`;
-      } else if (meta.cdn_provider) {
-        cdn_block = `<strong>Via ${meta.cdn_provider}:</strong> Enable X25519+ML-KEM-768 (IANA 0x11ec) in your CDN distribution or property settings.<br><br>`;
-      } else {
-        cdn_block = `<strong>Via CDN (easiest path):</strong> Cloudflare, Fastly, and AWS CloudFront already support X25519+ML-KEM-768 — for Cloudflare it is enabled by default; for CloudFront it requires enabling in distribution settings.<br><br>`;
-      }
-
       // Direct server config path
       const server_block =
-        `<strong>On your own server or load balancer:</strong> Enable the <strong>X25519+ML-KEM-768</strong> hybrid key exchange group in your TLS configuration.`;
+        `<strong>If your organisation controls the TLS termination point:</strong> Configure your TLS stack to negotiate the <strong>X25519+ML-KEM-768</strong> hybrid group.<br><br>` +
+        `<strong>If you use a CDN or reverse proxy:</strong> Many CDNs (Cloudflare, Fastly, AWS CloudFront, etc.) negotiate X25519+ML-KEM-768 automatically with browser clients. Note that PQC negotiation may not extend to non-browser API clients depending on CDN settings.`;
 
-      body  = cdn_block + server_block;
+      body  = server_block;
       color = "#9a3412"; bg = "#fff7ed"; border = "#fdba74";
     }
   }
