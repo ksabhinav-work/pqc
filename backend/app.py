@@ -277,8 +277,9 @@ def build_client_hello(host):
     sv_ext      = (struct.pack("!HH", 0x002b, len(sv_versions) + 1) +
                    struct.pack("!B", len(sv_versions)) + sv_versions)
 
-    # 12. Compress certificate — brotli + zlib
-    compress_ext = struct.pack("!HHBHH", 0x001b, 5, 4, 0x0002, 0x0001)
+    # 12. Compress certificate — omitted
+    # RFC 8879 compress_cert causes decode_error on some Fastly edge nodes.
+    compress_ext = b""  # disabled
 
     # 13. PSK key exchange modes
     psk_ext = struct.pack("!HHBB", 0x002d, 2, 1, 0x01)
@@ -428,24 +429,28 @@ def probe_kex_group(host, port=443, timeout=8):
     else:
         alert_err = "probe:no_data"
 
-    # ── Attempt 2: minimal X25519 ClientHello ─────────────────────────────────
+    # ── Attempt 2: classical-only ClientHello ────────────────────────────────
+    # NO PQC groups in supported_groups — critical.
+    # If PQC groups are advertised without a key share, Fastly sends an HRR
+    # requesting one — a round-trip we don't implement here.
+    # With classical-only groups the server picks X25519 and responds with
+    # a plain ServerHello we can parse in one round-trip.
     sni_name = host.encode()
     sni_body = b"\x00" + struct.pack("!H", len(sni_name)) + sni_name
     sni_list = struct.pack("!H", len(sni_body)) + sni_body
     sni_ext  = struct.pack("!HH", 0x0000, len(sni_list)) + sni_list
-    groups   = [0x11ec, 0x6399, 0x001D, 0x0017, 0x0018]
-    g_data   = b"".join(struct.pack("!H", g) for g in groups)
-    grp_ext  = (struct.pack("!HH", 0x000a, len(g_data)+2) +
-                struct.pack("!H", len(g_data)) + g_data)
-    sv_ext   = struct.pack("!HHHH", 0x002b, 4, 2, 0x0304)
+    groups2  = [0x001D, 0x0017, 0x0018, 0x0019]   # classical only, no PQC
+    g_data2  = b"".join(struct.pack("!H", g) for g in groups2)
+    grp_ext  = (struct.pack("!HH", 0x000a, len(g_data2)+2) +
+                struct.pack("!H", len(g_data2)) + g_data2)
+    sv_ext   = struct.pack("!HHB", 0x002b, 3, 2) + struct.pack("!H", 0x0304)
     sig_data = struct.pack("!HHHHHH", 0x0403, 0x0804, 0x0401, 0x0503, 0x0805, 0x0806)
     sig_ext  = (struct.pack("!HH", 0x000d, len(sig_data)+2) +
                 struct.pack("!H", len(sig_data)) + sig_data)
     ks_entry = struct.pack("!HH", 0x001D, 32) + os.urandom(32)
     ks_ext   = (struct.pack("!HH", 0x0033, len(ks_entry)+2) +
                 struct.pack("!H", len(ks_entry)) + ks_entry)
-    psk_ext  = struct.pack("!HHBB", 0x002d, 2, 1, 0x01)
-    exts2    = sni_ext + grp_ext + sv_ext + sig_ext + ks_ext + psk_ext
+    exts2    = sni_ext + grp_ext + sv_ext + sig_ext + ks_ext
     ciphers2 = struct.pack("!HHHH", 0x1301, 0x1302, 0x1303, 0x00ff)
     body2    = (struct.pack("!H", 0x0303) + os.urandom(32) +
                 struct.pack("!B", 32) + os.urandom(32) +
