@@ -1,1186 +1,1654 @@
-#!/usr/bin/env python3
-"""
-Crypto Scanner — Flask API
-Wraps crypto_scanner.py logic and exposes a JSON REST API.
-"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Quantum Risk Assessment</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,300;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import ssl
-import socket
-import struct
-import os
-import json
-import datetime
-import warnings
-import threading
-warnings.filterwarnings("ignore", category=DeprecationWarning)
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-try:
-    from cryptography import x509
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import rsa, ec, ed25519, ed448, x25519, x448
-    from cryptography.x509.oid import NameOID, ExtensionOID
-    HAS_CRYPTO = True
-except ImportError:
-    HAS_CRYPTO = False
-
-try:
-    import requests as req_lib
-    import urllib3
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-    HAS_REQUESTS = True
-except ImportError:
-    HAS_REQUESTS = False
-
-app = Flask(__name__)
-CORS(app)  # Allow GitHub Pages to call this API
-
-# ── Rate limiting (simple in-memory) ──────────────────────────────────────────
-from collections import defaultdict, deque
-import time
-
-_rate_store = defaultdict(deque)
-_rate_lock  = threading.Lock()
-
-def is_rate_limited(ip, max_requests=10, window=60):
-    now = time.time()
-    with _rate_lock:
-        dq = _rate_store[ip]
-        while dq and dq[0] < now - window:
-            dq.popleft()
-        if len(dq) >= max_requests:
-            return True
-        dq.append(now)
-        return False
-
-# ══════════════════════════════════════════════════════════════════════════════
-# PQC DATABASE (same as CLI tool)
-# ══════════════════════════════════════════════════════════════════════════════
-
-PQC_DB = {
-    "RSA-512":    (0,"CRITICAL","Key Exchange","Shor's","Withdrawn","ML-KEM-768 (FIPS 203)"),
-    "RSA-1024":   (0,"CRITICAL","Key Exchange","Shor's","Deprecated","ML-KEM-768 (FIPS 203)"),
-    "RSA-2048":   (1,"HIGH","Key Exchange","Shor's","Legacy Only","ML-KEM-768 (FIPS 203)"),
-    "RSA-3072":   (1,"HIGH","Key Exchange","Shor's","Legacy Only","ML-KEM-768 (FIPS 203)"),
-    "RSA-4096":   (2,"HIGH","Key Exchange","Shor's","Legacy Only","ML-KEM-1024 (FIPS 203)"),
-    "RSA":        (1,"HIGH","Key Exchange","Shor's","Legacy Only","ML-KEM-768 (FIPS 203)"),
-    "DH-512":     (0,"CRITICAL","Key Exchange","Shor's","Withdrawn","ML-KEM-768 (FIPS 203)"),
-    "DH-1024":    (0,"CRITICAL","Key Exchange","Shor's","Deprecated","ML-KEM-768 (FIPS 203)"),
-    "DH-2048":    (1,"HIGH","Key Exchange","Shor's","Deprecated","ML-KEM-768 (FIPS 203)"),
-    "ECDH-P192":  (0,"CRITICAL","Key Exchange","Shor's","Withdrawn","ML-KEM-768 (FIPS 203)"),
-    "ECDH-P224":  (1,"HIGH","Key Exchange","Shor's","Deprecated","ML-KEM-768 (FIPS 203)"),
-    "ECDH-P256":  (1,"HIGH","Key Exchange","Shor's","Legacy Only","ML-KEM-768 (FIPS 203)"),
-    "ECDH-P384":  (1,"HIGH","Key Exchange","Shor's","Legacy Only","ML-KEM-768 (FIPS 203)"),
-    "ECDH-P521":  (1,"HIGH","Key Exchange","Shor's","Legacy Only","ML-KEM-1024 (FIPS 203)"),
-    "X25519":     (1,"HIGH","Key Exchange","Shor's","Legacy Only","X25519+ML-KEM-768 hybrid"),
-    "X448":       (1,"HIGH","Key Exchange","Shor's","Legacy Only","ML-KEM-1024 (FIPS 203)"),
-    "ML-KEM-512": (4,"LOW","Key Exchange","Resistant","FIPS 203 (2024)","Current standard"),
-    "ML-KEM-768": (5,"NONE","Key Exchange","Resistant","FIPS 203 (2024)","Current standard"),
-    "ML-KEM-1024":(5,"NONE","Key Exchange","Resistant","FIPS 203 (2024)","Current standard"),
-    "X25519+ML-KEM-768":   (5,"NONE","Key Exchange","Resistant","IETF Draft","Current standard"),
-    "SecP256r1+ML-KEM-768":(5,"NONE","Key Exchange","Resistant","IETF Draft","Current standard"),
-    "X25519+ML-KEM-1024":  (5,"NONE","Key Exchange","Resistant","IETF Draft","Current standard"),
-    "X25519+Kyber768":     (4,"LOW","Key Exchange","Resistant","Pre-FIPS draft","X25519+ML-KEM-768"),
-    "RSA-PSS-2048":  (1,"HIGH","Signature","Shor's","Legacy Only","ML-DSA-65 (FIPS 204)"),
-    "RSA-PSS-3072":  (1,"HIGH","Signature","Shor's","Legacy Only","ML-DSA-65 (FIPS 204)"),
-    "RSA-PSS-4096":  (2,"HIGH","Signature","Shor's","Legacy Only","ML-DSA-87 (FIPS 204)"),
-    "RSA-PKCS1-2048":(1,"HIGH","Signature","Shor's","Legacy Only","ML-DSA-65 (FIPS 204)"),
-    "RSA-PKCS1-3072":(1,"HIGH","Signature","Shor's","Legacy Only","ML-DSA-65 (FIPS 204)"),
-    "RSA-PKCS1-4096":(2,"HIGH","Signature","Shor's","Legacy Only","ML-DSA-87 (FIPS 204)"),
-    "ECDSA-P192": (0,"CRITICAL","Signature","Shor's","Withdrawn","ML-DSA-44 (FIPS 204)"),
-    "ECDSA-P224": (1,"HIGH","Signature","Shor's","Deprecated","ML-DSA-44 (FIPS 204)"),
-    "ECDSA-P256": (1,"HIGH","Signature","Shor's","Legacy Only","ML-DSA-44 (FIPS 204)"),
-    "ECDSA-P384": (1,"HIGH","Signature","Shor's","Legacy Only","ML-DSA-65 (FIPS 204)"),
-    "ECDSA-P521": (1,"HIGH","Signature","Shor's","Legacy Only","ML-DSA-87 (FIPS 204)"),
-    "Ed25519":    (1,"HIGH","Signature","Shor's","Legacy Only","ML-DSA-44 (FIPS 204)"),
-    "Ed448":      (1,"HIGH","Signature","Shor's","Legacy Only","ML-DSA-65 (FIPS 204)"),
-    "DSA-1024":   (0,"CRITICAL","Signature","Shor's","Deprecated","ML-DSA-65 (FIPS 204)"),
-    "DSA-2048":   (1,"HIGH","Signature","Shor's","Deprecated","ML-DSA-65 (FIPS 204)"),
-    "ML-DSA-44":  (5,"NONE","Signature","Resistant","FIPS 204 (2024)","Current standard"),
-    "ML-DSA-65":  (5,"NONE","Signature","Resistant","FIPS 204 (2024)","Current standard"),
-    "ML-DSA-87":  (5,"NONE","Signature","Resistant","FIPS 204 (2024)","Current standard"),
-    "SLH-DSA-128s":(5,"NONE","Signature","Resistant","FIPS 205 (2024)","Current standard"),
-    "FN-DSA-512": (5,"NONE","Signature","Resistant","FIPS 206 (2024)","Current standard"),
-    "FN-DSA-1024":(5,"NONE","Signature","Resistant","FIPS 206 (2024)","Current standard"),
-    # Pre-FIPS / pre-standard names still seen in the wild
-    "Kyber768":       (4,"LOW",     "Key Exchange","Resistant",  "Pre-FIPS draft",     "X25519+ML-KEM-768"),
-    "Kyber1024":      (4,"LOW",     "Key Exchange","Resistant",  "Pre-FIPS draft",     "X25519+ML-KEM-1024"),
-    "Dilithium2":     (4,"LOW",     "Signature",   "Resistant",  "Pre-FIPS draft",     "ML-DSA-44 (FIPS 204)"),
-    "Dilithium3":     (4,"LOW",     "Signature",   "Resistant",  "Pre-FIPS draft",     "ML-DSA-65 (FIPS 204)"),
-    "Dilithium5":     (4,"LOW",     "Signature",   "Resistant",  "Pre-FIPS draft",     "ML-DSA-87 (FIPS 204)"),
-    "Falcon-512":     (4,"LOW",     "Signature",   "Resistant",  "Pre-FIPS draft",     "FN-DSA-512 (FIPS 206)"),
-    "Falcon-1024":    (4,"LOW",     "Signature",   "Resistant",  "Pre-FIPS draft",     "FN-DSA-1024 (FIPS 206)"),
-    "SPHINCS+-128s":  (4,"LOW",     "Signature",   "Resistant",  "Pre-FIPS draft",     "SLH-DSA-128s (FIPS 205)"),
-    # Chinese national standards (SM suite)
-    "SM2":            (1,"HIGH",    "Key Exchange","Shor's",     "GB/T 32918",         "ML-KEM-768 (FIPS 203)"),
-    "SM2-Sig":        (1,"HIGH",    "Signature",   "Shor's",     "GB/T 32918",         "ML-DSA-44 (FIPS 204)"),
-    "SM3":            (4,"LOW",     "Hash",        "Grover's",   "GB/T 32905",         "SM3 (acceptable) / SHA-384"),
-    "SM4-CBC":        (3,"MEDIUM",  "Symmetric",   "Grover's",   "GB/T 32907",         "AES-256-GCM or SM4-GCM"),
-    "SM4-GCM":        (4,"LOW",     "Symmetric",   "Grover's",   "GB/T 32907",         "AES-256-GCM (128-bit key)"),
-    # Additional KEX variants
-    "DH-4096":        (2,"HIGH",    "Key Exchange","Shor's",     "Legacy Only",        "ML-KEM-1024 (FIPS 203)"),
-    "ECDH":           (1,"HIGH",    "Key Exchange","Shor's",     "Legacy Only",        "ML-KEM-768 (FIPS 203)"),
-    # Additional symmetric
-    "AES-192-GCM":    (5,"NONE",    "Symmetric",   "Resistant",  "FIPS 197",           "Current standard"),
-    "Camellia-128":   (3,"MEDIUM",  "Symmetric",   "Grover's",   "RFC 3713",           "AES-256-GCM"),
-    "Camellia-256":   (4,"LOW",     "Symmetric",   "Grover's",   "RFC 3713",           "AES-256-GCM"),
-    "ARIA-128":       (3,"MEDIUM",  "Symmetric",   "Grover's",   "RFC 6209",           "AES-256-GCM"),
-    "ARIA-256":       (4,"LOW",     "Symmetric",   "Grover's",   "RFC 6209",           "AES-256-GCM"),
-    "DES":              (0,"CRITICAL","Symmetric","Grover's","Withdrawn","AES-256-GCM"),
-    "3DES":             (0,"CRITICAL","Symmetric","Grover's","Deprecated 2023","AES-256-GCM"),
-    "RC4":              (0,"CRITICAL","Symmetric","Grover's","Withdrawn","ChaCha20-Poly1305"),
-    "AES-128-CBC":      (2,"MEDIUM","Symmetric","Grover's","Legacy","AES-256-GCM"),
-    "AES-128-GCM":      (3,"MEDIUM","Symmetric","Grover's","Approved","AES-256-GCM"),
-    "AES-128-ECB":      (1,"HIGH","Symmetric","Grover's","Mode Insecure","AES-256-GCM"),
-    "AES-256-CBC":      (4,"LOW","Symmetric","Grover's","Approved","AES-256-GCM (prefer GCM)"),
-    "AES-256-GCM":      (5,"NONE","Symmetric","Resistant","FIPS 197","Current standard"),
-    "AES-256-CTR":      (4,"LOW","Symmetric","Resistant","FIPS 197","AES-256-GCM (add AEAD)"),
-    "ChaCha20-Poly1305":(5,"NONE","Symmetric","Resistant","RFC 8439","Current standard"),
-    "MD5":     (0,"CRITICAL","Hash","Grover's","Withdrawn","SHA-256 minimum"),
-    "SHA-1":   (0,"CRITICAL","Hash","Grover's","Deprecated 2022","SHA-256 minimum"),
-    "SHA-224": (3,"MEDIUM","Hash","Grover's","FIPS 180-4","SHA-384"),
-    "SHA-256": (4,"LOW","Hash","Grover's","FIPS 180-4","SHA-384 for high assurance"),
-    "SHA-384": (5,"NONE","Hash","Resistant","FIPS 180-4","Current standard"),
-    "SHA-512": (5,"NONE","Hash","Resistant","FIPS 180-4","Current standard"),
-    "SHA3-256":(4,"LOW","Hash","Grover's","FIPS 202","SHA3-384 for high assurance"),
-    "SHA3-384":(5,"NONE","Hash","Resistant","FIPS 202","Current standard"),
-    "SHA3-512":(5,"NONE","Hash","Resistant","FIPS 202","Current standard"),
-    "SSL-2.0": (0,"CRITICAL","Protocol","N/A","Withdrawn","TLS 1.3 + ML-KEM hybrid"),
-    "SSL-3.0": (0,"CRITICAL","Protocol","N/A","Withdrawn","TLS 1.3 + ML-KEM hybrid"),
-    "TLS-1.0": (0,"CRITICAL","Protocol","N/A","Deprecated 2021","TLS 1.3 + ML-KEM hybrid"),
-    "TLS-1.1": (0,"CRITICAL","Protocol","N/A","Deprecated 2021","TLS 1.3 + ML-KEM hybrid"),
-    "TLS-1.2": (2,"MEDIUM","Protocol","Depends","Conditional","TLS 1.3 + ML-KEM hybrid"),
-    "TLS-1.3": (4,"LOW","Protocol","Classical KEX","Recommended","TLS 1.3 + X25519+ML-KEM-768"),
-}
-
-TLS_GROUPS = {
-    0x0017:"ECDH-P256", 0x0018:"ECDH-P384", 0x0019:"ECDH-P521",
-    0x001D:"X25519",    0x001E:"X448",
-    0x11ec:"X25519+ML-KEM-768", 0x11eb:"SecP256r1+ML-KEM-768",
-    0x6399:"X25519+ML-KEM-768", 0x639a:"X25519+ML-KEM-1024",
-    0x0200:"X25519+Kyber768",
-    0x0203:"ML-KEM-768", 0x0204:"ML-KEM-1024",
-}
-
-KEX_DESCRIPTIONS = {
-    "X25519+ML-KEM-768":    "X25519 + ML-KEM-768 hybrid (IANA 0x{id:04x}) — session traffic is quantum-safe",
-    "SecP256r1+ML-KEM-768": "P-256 + ML-KEM-768 hybrid (IANA 0x{id:04x}) — session traffic is quantum-safe",
-    "X25519+ML-KEM-1024":   "X25519 + ML-KEM-1024 hybrid (IANA 0x{id:04x}) — quantum-safe",
-    "X25519+Kyber768":      "X25519 + Kyber768 pre-standard hybrid (IANA 0x{id:04x})",
-    "X25519":               "X25519 elliptic curve (IANA 0x{id:04x}) — classical only, no PQC",
-    "ECDH-P256":            "ECDH P-256 (IANA 0x{id:04x}) — classical only, no PQC",
-    "ECDH-P384":            "ECDH P-384 (IANA 0x{id:04x}) — classical only, no PQC",
-    "ML-KEM-768":           "Pure ML-KEM-768 (IANA 0x{id:04x}) — fully quantum-safe",
-    "ML-KEM-1024":          "Pure ML-KEM-1024 (IANA 0x{id:04x}) — fully quantum-safe",
-}
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SCANNER LOGIC
-# ══════════════════════════════════════════════════════════════════════════════
-
-def pqc_lookup(algo):
-    entry = PQC_DB.get(algo)
-    if not entry:
-        return {"rating":3,"threat":"UNKNOWN","category":"Unknown",
-                "quantum":"Unknown","nist":"Unknown","migrate":"Unknown"}
-    return {"rating":entry[0],"threat":entry[1],"category":entry[2],
-            "quantum":entry[3],"nist":entry[4],"migrate":entry[5]}
-
-
-def build_client_hello(host):
-    """
-    Build a TLS 1.3 ClientHello that closely mimics Chrome 120+.
-    Includes GREASE, correct extension ordering, and all extensions
-    a real browser sends — to defeat CDN client fingerprinting (Fastly, Akamai, etc.)
-    which otherwise falls back to classical key exchange for bot-like clients.
-    """
-    import random
-
-    # GREASE: browsers insert random dummy values into cipher/extension/group lists.
-    # Absence of GREASE is an immediate bot signal to CDNs.
-    GREASE_VALUES = [
-        0x0a0a, 0x1a1a, 0x2a2a, 0x3a3a, 0x4a4a, 0x5a5a,
-        0x6a6a, 0x7a7a, 0x8a8a, 0x9a9a, 0xaaaa, 0xbaba,
-        0xcaca, 0xdada, 0xeaea, 0xfafa,
-    ]
-    grease = random.choice(GREASE_VALUES)
-
-    # Cipher suites in Chrome order (17 suites + GREASE)
-    cipher_list = [
-        grease,  0x1301, 0x1302, 0x1303,
-        0xc02b,  0xc02f, 0xc02c, 0xc030,
-        0xcca9,  0xcca8, 0xc013, 0xc014,
-        0x009c,  0x009d, 0x002f, 0x0035,
-        0x00ff,
-    ]
-    ciphers_bytes = b"".join(struct.pack("!H", c) for c in cipher_list)
-
-    random_bytes = os.urandom(32)
-    session_id   = os.urandom(32)
-
-    # 1. GREASE extension
-    grease_ext = struct.pack("!HH", grease, 0)
-
-    # 2. SNI
-    sni_name = host.encode()
-    sni_body = b"\x00" + struct.pack("!H", len(sni_name)) + sni_name
-    sni_list = struct.pack("!H", len(sni_body)) + sni_body
-    sni_ext  = struct.pack("!HH", 0x0000, len(sni_list)) + sni_list
-
-    # 3. Extended master secret
-    ems_ext = struct.pack("!HH", 0x0017, 0)
-
-    # 4. Renegotiation info
-    reneg_ext = struct.pack("!HHB", 0xff01, 1, 0x00)
-
-    # 5. Supported groups — PQC hybrids first, then classical
-    groups = [
-        grease,
-        0x11ec,   # X25519+ML-KEM-768  (IANA, current standard)
-        0x6399,   # X25519+ML-KEM-768  (Cloudflare draft — advertised but no key share sent)
-        0x11eb,   # SecP256r1+ML-KEM-768
-        0x639a,   # X25519+ML-KEM-1024
-        0x001D,   # X25519
-        0x001E,   # X448
-        0x0017,   # P-256
-        0x0018,   # P-384
-        0x0019,   # P-521
-    ]
-    groups_data = b"".join(struct.pack("!H", g) for g in groups)
-    groups_ext  = (struct.pack("!HH", 0x000a, len(groups_data) + 2) +
-                   struct.pack("!H", len(groups_data)) + groups_data)
-
-    # 6. EC point formats
-    ec_points_ext = struct.pack("!HHBB", 0x000b, 2, 1, 0x00)
-
-    # 7. Session ticket (empty)
-    session_ticket_ext = struct.pack("!HH", 0x0023, 0)
-
-    # 8. ALPN — h2 then http/1.1
-    alpn_protocols = b"\x02h2\x08http/1.1"
-    alpn_list      = struct.pack("!H", len(alpn_protocols)) + alpn_protocols
-    alpn_ext       = struct.pack("!HH", 0x0010, len(alpn_list)) + alpn_list
-
-    # 9. OCSP status request
-    ocsp_ext = struct.pack("!HH", 0x0005, 5) + b"\x01\x00\x00\x00\x00"
-
-    # 10. Signature algorithms (Chrome full list)
-    sig_algs = [0x0403, 0x0804, 0x0401, 0x0503, 0x0805,
-                0x0501, 0x0806, 0x0601, 0x0201, 0x0203]
-    sig_data = b"".join(struct.pack("!H", s) for s in sig_algs)
-    sig_ext  = (struct.pack("!HH", 0x000d, len(sig_data) + 2) +
-                struct.pack("!H", len(sig_data)) + sig_data)
-
-    # 11. Supported versions — GREASE + TLS 1.3
-    sv_versions = struct.pack("!HH", grease, 0x0304)
-    sv_ext      = (struct.pack("!HH", 0x002b, len(sv_versions) + 1) +
-                   struct.pack("!B", len(sv_versions)) + sv_versions)
-
-    # 12. Compress certificate — omitted
-    # RFC 8879 compress_cert causes decode_error on some Fastly edge nodes.
-    compress_ext = b""  # disabled
-
-    # 13. PSK key exchange modes
-    psk_ext = struct.pack("!HHBB", 0x002d, 2, 1, 0x01)
-
-    # 14. Key share — one PQC offer (0x11ec) + X25519 fallback.
-    #     Sending a concrete PQC key share causes Fastly/CDNs to negotiate
-    #     the PQC group. Two key shares (2×1216 bytes) caused decode_error
-    #     on Fastly — one is enough to signal PQC support.
-    #     X25519+ML-KEM-768: 32 bytes (X25519) + 1184 bytes (ML-KEM-768 ek) = 1216 bytes
-    pqc_pub    = os.urandom(1216)  # X25519+ML-KEM-768 (IANA 0x11ec)
-    x25519_pub = os.urandom(32)    # classical fallback
-    ks_pqc     = struct.pack("!HH", 0x11ec, 1216) + pqc_pub
-    ks_x25519  = struct.pack("!HH", 0x001D, 32)   + x25519_pub
-    ks_entries = ks_pqc + ks_x25519
-    ks_ext     = (struct.pack("!HH", 0x0033, len(ks_entries) + 2) +
-                  struct.pack("!H", len(ks_entries)) + ks_entries)
-
-    # 15. Trailing GREASE extension
-    grease2     = random.choice([g for g in GREASE_VALUES if g != grease])
-    grease2_ext = struct.pack("!HH", grease2, 0)
-
-    # Assemble in Chrome extension order
-    extensions = (
-        grease_ext + sni_ext + ems_ext + reneg_ext + groups_ext +
-        ec_points_ext + session_ticket_ext + alpn_ext + ocsp_ext +
-        sig_ext + sv_ext + compress_ext + psk_ext + ks_ext + grease2_ext
-    )
-
-    body = (
-        struct.pack("!H", 0x0303)            +
-        random_bytes                         +
-        struct.pack("!B", len(session_id))   +
-        session_id                           +
-        struct.pack("!H", len(ciphers_bytes))+
-        ciphers_bytes                        +
-        b"\x01\x00"                          +
-        struct.pack("!H", len(extensions))   +
-        extensions
-    )
-    hs_msg = b"\x01" + struct.pack("!I", len(body))[1:] + body
-    return b"\x16\x03\x01" + struct.pack("!H", len(hs_msg)) + hs_msg
-
-
-def _send_probe(host, port, hello_bytes, timeout=8):
-    """Send raw ClientHello, return (data_bytes, error_str)."""
-    try:
-        sock = socket.create_connection((host, port), timeout=timeout)
-        sock.sendall(hello_bytes)
-        data = b""
-        sock.settimeout(5)
-        try:
-            while len(data) < 16384:
-                chunk = sock.recv(4096)
-                if not chunk:
-                    break
-                data += chunk
-                if len(data) > 4096:
-                    break
-        except socket.timeout:
-            pass
-        sock.close()
-        return data, None
-    except socket.timeout:
-        return b"", "probe:timeout"
-    except ConnectionRefusedError:
-        return b"", "probe:refused"
-    except Exception as e:
-        return b"", f"probe:error:{type(e).__name__}"
-
-
-def _parse_server_hello_group(data):
-    """
-    Walk TLS records, find ServerHello, extract key_share group.
-    Returns (group_id, group_name), (None, "probe:alert:X") on TLS alert,
-    or (None, None) if nothing found.
-    """
-    TLS_ALERT_DESC = {
-        0:"close_notify", 10:"unexpected_message", 20:"bad_record_mac",
-        40:"handshake_failure", 42:"bad_certificate", 47:"illegal_parameter",
-        50:"decode_error", 51:"decrypt_error", 70:"protocol_version",
-        71:"insufficient_security", 80:"internal_error", 86:"inappropriate_fallback",
-        109:"missing_extension", 110:"unsupported_extension", 116:"certificate_required",
+    :root {
+      --paper:   #f5f0e8;
+      --paper2:  #ede8de;
+      --paper3:  #e8e2d5;
+      --ink:     #1a1714;
+      --ink2:    #2d2926;
+      --muted:   #7a6f60;
+      --rule:    #c8bfaa;
+      --rule2:   #b0a590;
+      --red:     #9b1c1c;
+      --orange:  #9a3412;
+      --amber:   #92400e;
+      --green:   #14532d;
+      --navy:    #1e3a5f;
+      --stamp-red: #c41e3a;
     }
-    pos = 0
-    while pos < len(data) - 5:
-        rec_type = data[pos]
-        if data[pos+1] != 0x03:
-            pos += 1; continue
-        rec_len = struct.unpack("!H", data[pos+3:pos+5])[0]
-        if rec_len > 16384 or pos + 5 + rec_len > len(data):
-            break
-        payload = data[pos+5:pos+5+rec_len]
-        pos += 5 + rec_len
 
-        # TLS Alert (0x15)
-        if rec_type == 0x15 and len(payload) >= 2:
-            desc = TLS_ALERT_DESC.get(payload[1], f"alert_{payload[1]}")
-            return None, f"probe:alert:{desc}"
-
-        if rec_type != 0x16 or not payload or payload[0] != 0x02:
-            continue
-
-        # ServerHello: [0]=type [1:4]=len [4:6]=legacy_ver [6:38]=random
-        p = 4 + 2 + 32
-        if p >= len(payload): break
-        sid_len = payload[p]; p += 1 + sid_len + 2 + 1
-        if p + 2 > len(payload): break
-        ext_total = struct.unpack("!H", payload[p:p+2])[0]
-        p += 2; end = p + ext_total
-        while p + 4 <= end:
-            ext_type = struct.unpack("!H", payload[p:p+2])[0]
-            ext_len  = struct.unpack("!H", payload[p+2:p+4])[0]
-            ext_data = payload[p+4:p+4+ext_len]
-            p += 4 + ext_len
-            if ext_type == 0x0033 and len(ext_data) >= 2:
-                gid = struct.unpack("!H", ext_data[0:2])[0]
-                return gid, TLS_GROUPS.get(gid, f"Unknown(0x{gid:04x})")
-    return None, None
-
-
-def _build_pqc_hello(host):
-    """
-    Minimal but correct TLS 1.3 ClientHello with a single PQC key share.
-    Deliberately avoids GREASE and non-essential extensions to prevent
-    decode_error from CDNs with strict parsers (e.g. Fastly/GitHub Pages).
-    Sends X25519+ML-KEM-768 (0x11ec, 1216 bytes) + X25519 (32 bytes).
-    """
-    sni_name = host.encode()
-    sni_body = b"\x00" + struct.pack("!H", len(sni_name)) + sni_name
-    sni_list = struct.pack("!H", len(sni_body)) + sni_body
-    sni_ext  = struct.pack("!HH", 0x0000, len(sni_list)) + sni_list
-
-    # supported_groups: PQC hybrids + classical
-    groups   = [0x11ec, 0x6399, 0x11eb, 0x001D, 0x0017, 0x0018]
-    g_data   = b"".join(struct.pack("!H", g) for g in groups)
-    grp_ext  = (struct.pack("!HH", 0x000a, len(g_data)+2) +
-                struct.pack("!H", len(g_data)) + g_data)
-
-    # supported_versions: TLS 1.3 only
-    # Format: type(2) + ext_len(2) + list_len_byte(1) + version(2)
-    sv_ext   = (struct.pack("!HH", 0x002b, 3) +
-                struct.pack("!B", 2) +
-                struct.pack("!H", 0x0304))
-
-    # signature_algorithms
-    sig_algs = [0x0403, 0x0804, 0x0401, 0x0503, 0x0805, 0x0501, 0x0806, 0x0601]
-    sig_data = b"".join(struct.pack("!H", s) for s in sig_algs)
-    sig_ext  = (struct.pack("!HH", 0x000d, len(sig_data)+2) +
-                struct.pack("!H", len(sig_data)) + sig_data)
-
-    # psk_key_exchange_modes
-    psk_ext  = struct.pack("!HHBB", 0x002d, 2, 1, 0x01)
-
-    # key_share: PQC (0x11ec, 1216 bytes) + X25519 (32 bytes)
-    ks_pqc   = struct.pack("!HH", 0x11ec, 1216) + os.urandom(1216)
-    ks_x25519= struct.pack("!HH", 0x001D, 32)   + os.urandom(32)
-    ks_list  = ks_pqc + ks_x25519
-    ks_ext   = (struct.pack("!HH", 0x0033, len(ks_list)+2) +
-                struct.pack("!H", len(ks_list)) + ks_list)
-
-    extensions = sni_ext + grp_ext + sv_ext + sig_ext + psk_ext + ks_ext
-
-    ciphers = struct.pack("!HHHH", 0x1301, 0x1302, 0x1303, 0x00ff)
-    session_id = os.urandom(32)
-    body = (
-        struct.pack("!H", 0x0303) +
-        os.urandom(32) +
-        struct.pack("!B", len(session_id)) + session_id +
-        struct.pack("!H", len(ciphers)) + ciphers +
-        b"\x01\x00" +
-        struct.pack("!H", len(extensions)) + extensions
-    )
-    hs_msg = b"\x01" + struct.pack("!I", len(body))[1:] + body
-    return b"\x16\x03\x01" + struct.pack("!H", len(hs_msg)) + hs_msg
-
-
-def _build_x25519_hello(host):
-    """
-    Minimal TLS 1.3 ClientHello with X25519-only key share.
-    Used as fallback if PQC hello is rejected.
-    Still advertises PQC groups so server can HRR.
-    """
-    sni_name = host.encode()
-    sni_body = b"\x00" + struct.pack("!H", len(sni_name)) + sni_name
-    sni_list = struct.pack("!H", len(sni_body)) + sni_body
-    sni_ext  = struct.pack("!HH", 0x0000, len(sni_list)) + sni_list
-
-    groups   = [0x11ec, 0x6399, 0x001D, 0x0017, 0x0018]
-    g_data   = b"".join(struct.pack("!H", g) for g in groups)
-    grp_ext  = (struct.pack("!HH", 0x000a, len(g_data)+2) +
-                struct.pack("!H", len(g_data)) + g_data)
-
-    # supported_versions: correct format — list_len is 1 byte
-    sv_ext   = (struct.pack("!HH", 0x002b, 3) +
-                struct.pack("!B", 2) +
-                struct.pack("!H", 0x0304))
-
-    sig_algs = [0x0403, 0x0804, 0x0401, 0x0503, 0x0805, 0x0806]
-    sig_data = b"".join(struct.pack("!H", s) for s in sig_algs)
-    sig_ext  = (struct.pack("!HH", 0x000d, len(sig_data)+2) +
-                struct.pack("!H", len(sig_data)) + sig_data)
-
-    psk_ext  = struct.pack("!HHBB", 0x002d, 2, 1, 0x01)
-
-    ks_entry = struct.pack("!HH", 0x001D, 32) + os.urandom(32)
-    ks_ext   = (struct.pack("!HH", 0x0033, len(ks_entry)+2) +
-                struct.pack("!H", len(ks_entry)) + ks_entry)
-
-    extensions = sni_ext + grp_ext + sv_ext + sig_ext + psk_ext + ks_ext
-    ciphers = struct.pack("!HHHH", 0x1301, 0x1302, 0x1303, 0x00ff)
-    session_id = os.urandom(32)
-    body = (
-        struct.pack("!H", 0x0303) +
-        os.urandom(32) +
-        struct.pack("!B", len(session_id)) + session_id +
-        struct.pack("!H", len(ciphers)) + ciphers +
-        b"\x01\x00" +
-        struct.pack("!H", len(extensions)) + extensions
-    )
-    hs_msg = b"\x01" + struct.pack("!I", len(body))[1:] + body
-    return b"\x16\x03\x01" + struct.pack("!H", len(hs_msg)) + hs_msg
-
-
-def probe_kex_group(host, port=443, timeout=8):
-    """
-    Three-attempt probe strategy:
-    Attempt 1: Minimal PQC ClientHello (0x11ec key share, essential extensions only).
-               No GREASE — avoids decode_error from strict CDN parsers like Fastly.
-    Attempt 2: Browser-mimicking ClientHello (GREASE, full extensions).
-               For CDNs that fingerprint clients and require browser-like hellos.
-    Attempt 3: X25519-only ClientHello.
-               Fallback — at minimum tells us the classical group negotiated.
-    Returns (group_id, group_name) or (None, error_str).
-    """
-    # Attempt 1: minimal PQC hello
-    data1, err1 = _send_probe(host, port, _build_pqc_hello(host), timeout)
-    if err1:
-        return None, err1
-    if data1:
-        gid, gname = _parse_server_hello_group(data1)
-        if gid is not None:
-            return gid, gname
-        alert1 = gname  # e.g. "probe:alert:decode_error" or None
-    else:
-        alert1 = "probe:no_data"
-
-    # Attempt 2: browser-mimicking hello (GREASE + full extensions, X25519 key share only)
-    data2, err2 = _send_probe(host, port, build_client_hello(host), timeout)
-    if not err2 and data2:
-        gid, gname = _parse_server_hello_group(data2)
-        if gid is not None:
-            return gid, gname
-
-    # Attempt 3: minimal X25519-only hello
-    data3, err3 = _send_probe(host, port, _build_x25519_hello(host), timeout)
-    if not err3 and data3:
-        gid, gname = _parse_server_hello_group(data3)
-        if gid is not None:
-            return gid, gname
-
-    return None, alert1 or err2 or err3 or "probe:no_server_hello"
-
-
-def probe_tls12_kex_curve(host, port=443, timeout=8):
-    """
-    For TLS 1.2 ECDHE connections: send a raw TLS 1.2 ClientHello and parse
-    the ServerKeyExchange record to find the actual named curve used.
-    Returns algo name string like "ECDH-P256", "ECDH-P384", "X25519", or None.
-
-    In TLS 1.2, the key exchange curve is NOT in the cipher suite string —
-    it is negotiated via the supported_groups extension and announced by the
-    server in a ServerKeyExchange handshake message (type 0x0c).
-    """
-    CURVE_MAP = {
-        0x0017: "ECDH-P256",
-        0x0018: "ECDH-P384",
-        0x0019: "ECDH-P521",
-        0x001D: "X25519",
-        0x001E: "X448",
+    body {
+      background-color: var(--paper);
+      color: var(--ink);
+      font-family: 'Source Serif 4', Georgia, serif;
+      min-height: 100vh;
+      /* math exercise book grid */
+      background-image:
+        linear-gradient(to right,  rgba(180,160,130,0.13) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(180,160,130,0.13) 1px, transparent 1px);
+      background-size: 24px 24px;
     }
-    try:
-        sni_name = host.encode()
-        sni_body = b"\x00" + struct.pack("!H", len(sni_name)) + sni_name
-        sni_list = struct.pack("!H", len(sni_body)) + sni_body
-        sni_ext  = struct.pack("!HH", 0x0000, len(sni_list)) + sni_list
-
-        curves = [0x001D, 0x0017, 0x0018, 0x0019, 0x001E]
-        curves_data = b"".join(struct.pack("!H", c) for c in curves)
-        groups_ext  = (struct.pack("!HH", 0x000a, len(curves_data) + 2) +
-                       struct.pack("!H", len(curves_data)) + curves_data)
-
-        ec_points_ext = struct.pack("!HHBB", 0x000b, 2, 1, 0x00)
-
-        sig_algs = [0x0401, 0x0501, 0x0601, 0x0403, 0x0503, 0x0603, 0x0804, 0x0805, 0x0806]
-        sig_data = b"".join(struct.pack("!H", s) for s in sig_algs)
-        sig_ext  = (struct.pack("!HH", 0x000d, len(sig_data) + 2) +
-                    struct.pack("!H", len(sig_data)) + sig_data)
-
-        extensions = sni_ext + groups_ext + ec_points_ext + sig_ext
-
-        ciphers = struct.pack("!HHHHHHHH",
-            0xc02b, 0xc02f, 0xc02c, 0xc030,
-            0xcca9, 0xcca8, 0xc013, 0xc014,
-        )
-        random_bytes = os.urandom(32)
-
-        body = (
-            struct.pack("!H", 0x0303) +
-            random_bytes +
-            b"\x00" +
-            struct.pack("!H", len(ciphers)) + ciphers +
-            b"\x01\x00" +
-            struct.pack("!H", len(extensions)) + extensions
-        )
-        hs_msg = b"\x01" + struct.pack("!I", len(body))[1:] + body
-        record = b"\x16\x03\x01" + struct.pack("!H", len(hs_msg)) + hs_msg
-
-        sock = socket.create_connection((host, port), timeout=timeout)
-        sock.sendall(record)
-        data = b""
-        sock.settimeout(5)
-        try:
-            while len(data) < 32768:
-                chunk = sock.recv(4096)
-                if not chunk: break
-                data += chunk
-                if len(data) > 8192: break
-        except socket.timeout:
-            pass
-        sock.close()
-
-        pos = 0
-        while pos < len(data) - 5:
-            if data[pos] != 0x16:
-                pos += 1; continue
-            rec_len = struct.unpack("!H", data[pos+3:pos+5])[0]
-            if rec_len > 16384 or pos + 5 + rec_len > len(data): break
-            payload = data[pos+5:pos+5+rec_len]
-            pos += 5 + rec_len
-            hp = 0
-            while hp < len(payload) - 4:
-                hs_type = payload[hp]
-                hs_len  = struct.unpack("!I", b"\x00" + payload[hp+1:hp+4])[0]
-                hs_body = payload[hp+4:hp+4+hs_len]
-                hp += 4 + hs_len
-                if hs_type == 0x0c:  # ServerKeyExchange
-                    if len(hs_body) >= 3 and hs_body[0] == 0x03:
-                        curve_id = struct.unpack("!H", hs_body[1:3])[0]
-                        return CURVE_MAP.get(curve_id, f"ECDH-Unknown(0x{curve_id:04x})")
-                    return None
-    except Exception:
-        pass
-    return None
-
-
-def parse_cipher_suite(cipher_name):
-    algos = []
-    name = cipher_name.upper().replace("-","_")
-    if   "ECDHE" in name: algos.append(("ECDH-P256","Key exchange (ECDHE)"))
-    elif "DHE"   in name: algos.append(("DH-2048",  "Key exchange (DHE)"))
-    elif name.startswith("RSA_") or name.startswith("TLS_RSA"):
-        algos.append(("RSA-2048","Key exchange (RSA static)"))
-    if   "AES_256_GCM"       in name: algos.append(("AES-256-GCM","Symmetric encryption"))
-    elif "AES_128_GCM"       in name: algos.append(("AES-128-GCM","Symmetric encryption"))
-    elif "AES_256_CBC"       in name: algos.append(("AES-256-CBC","Symmetric encryption"))
-    elif "AES_128_CBC"       in name: algos.append(("AES-128-CBC","Symmetric encryption"))
-    elif "CHACHA20_POLY1305" in name: algos.append(("ChaCha20-Poly1305","Symmetric encryption"))
-    elif "3DES"              in name: algos.append(("3DES","Symmetric encryption"))
-    elif "RC4"               in name: algos.append(("RC4","Symmetric encryption"))
-    if   "SHA384" in name or "SHA_384" in name: algos.append(("SHA-384","MAC/PRF"))
-    elif "SHA256" in name or "SHA_256" in name: algos.append(("SHA-256","MAC/PRF"))
-    elif "_SHA"  in name and "SHA2" not in name: algos.append(("SHA-1","MAC/PRF"))
-    elif "MD5"   in name: algos.append(("MD5","MAC/PRF"))
-    return algos
-
-
-def _fetch_aia_intermediates(leaf_der, seen_urls=None, depth=0, errors=None):
-    """
-    Walk AIA caIssuers chain to fetch intermediates + root.
-    Uses requests library (already available). Returns [(role, der_bytes), ...].
-    """
-    if depth > 4 or not HAS_CRYPTO:
-        return []
-    if seen_urls is None: seen_urls = set()
-    if errors    is None: errors    = []
-
-    try:
-        from cryptography.x509 import AuthorityInformationAccess, ExtensionNotFound
-        from cryptography.x509.oid import AuthorityInformationAccessOID
-        cert = x509.load_der_x509_certificate(leaf_der)
-        try:
-            aia = cert.extensions.get_extension_for_class(AuthorityInformationAccess)
-            urls = [d.access_location.value for d in aia.value
-                    if d.access_method == AuthorityInformationAccessOID.CA_ISSUERS]
-        except ExtensionNotFound:
-            return []
-
-        results = []
-        for url in urls:
-            if url in seen_urls:
-                continue
-            seen_urls.add(url)
-            try:
-                if HAS_REQUESTS:
-                    resp = req_lib.get(url, timeout=6, verify=False,
-                                       headers={"User-Agent": "CryptoScanner/1.0"})
-                    raw = resp.content
-                else:
-                    import urllib.request
-                    with urllib.request.urlopen(url, timeout=6) as r:
-                        raw = r.read()
-
-                # DER or PEM?
-                if raw.strip().startswith(b"-----"):
-                    import base64, re as _re
-                    b64 = _re.sub(b"-----[^\n]+-----", b"", raw).replace(b"\n", b"")
-                    der = base64.b64decode(b64)
-                else:
-                    der = raw
-
-                iss_cert = x509.load_der_x509_certificate(der)
-                is_root  = (iss_cert.subject == iss_cert.issuer)
-                role     = "root" if is_root else "intermediate"
-                results.append((role, der))
-                if not is_root:
-                    results.extend(
-                        _fetch_aia_intermediates(der, seen_urls, depth+1, errors)
-                    )
-            except Exception as e:
-                errors.append(f"AIA fetch {url}: {e}")
-                continue
-        return results
-    except Exception as e:
-        errors.append(f"AIA parse depth={depth}: {e}")
-        return []
-
-
-def get_cert_chain(host, port=443, timeout=10):
-    """
-    Fetch the full cert chain: leaf from TLS handshake, then walk AIA to get
-    intermediates and root. Returns [(role, der_bytes), ...] leaf first.
-    """
-    leaf_der = None
-    handshake_chain = []  # what the server voluntarily sent
-
-    # Try pyOpenSSL first — gets whatever the server sent
-    try:
-        from OpenSSL import SSL, crypto as ossl_crypto
-        ctx = SSL.Context(SSL.TLS_CLIENT_METHOD)
-        ctx.set_verify(SSL.VERIFY_NONE, lambda *a: True)
-        sock = socket.create_connection((host, port), timeout=timeout)
-        conn = SSL.Connection(ctx, sock)
-        conn.set_tlsext_host_name(host.encode())
-        conn.set_connect_state()
-        conn.do_handshake()
-        chain = conn.get_peer_cert_chain()
-        conn.close(); sock.close()
-        for i, cert in enumerate(chain or []):
-            der = ossl_crypto.dump_certificate(ossl_crypto.FILETYPE_ASN1, cert)
-            if i == 0:
-                leaf_der = der
-            handshake_chain.append(der)
-    except Exception:
-        pass
-
-    # Fallback: stdlib for leaf only
-    if not leaf_der:
-        try:
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
-            with socket.create_connection((host, port), timeout=timeout) as raw:
-                with ctx.wrap_socket(raw, server_hostname=host) as conn:
-                    leaf_der = conn.getpeercert(binary_form=True)
-        except Exception:
-            return []
-
-    if not leaf_der:
-        return []
-
-    result = [("leaf", leaf_der)]
-
-    # If server sent full chain, use it (minus the leaf we already have)
-    if len(handshake_chain) > 1:
-        for i, der in enumerate(handshake_chain[1:], 1):
-            role = "root" if i == len(handshake_chain) - 1 else "intermediate"
-            result.append((role, der))
-    else:
-        # Server sent leaf only — chase AIA to build the chain ourselves
-        aia_chain = _fetch_aia_intermediates(leaf_der)
-        result.extend(aia_chain)
-
-    # Re-label: if top cert is not self-signed, it's an intermediate — also chase its AIA for the root
-    if len(result) >= 2:
-        relabeled = []
-        top_is_intermediate = False
-        for i, (role, der) in enumerate(result):
-            if i == 0:
-                relabeled.append(("leaf", der))
-            elif i == len(result) - 1:
-                try:
-                    c = x509.load_der_x509_certificate(der)
-                    is_self = (c.subject == c.issuer)
-                    if is_self:
-                        relabeled.append(("root", der))
-                    else:
-                        relabeled.append(("intermediate", der))
-                        top_is_intermediate = True
-                        top_der = der
-                except Exception:
-                    relabeled.append((role, der))
-            else:
-                relabeled.append(("intermediate", der))
-        result = relabeled
-
-        # Server didn't send the root — chase AIA from the topmost intermediate
-        if top_is_intermediate:
-            extra = _fetch_aia_intermediates(top_der)
-            # Only append certs we haven't seen yet (deduplicate by DER bytes)
-            seen_ders = set(d for _, d in result)
-            for r, d in extra:
-                if d not in seen_ders:
-                    result.append((r, d))
-                    seen_ders.add(d)
-
-    return result
-
-
-def parse_cert(der_bytes, role="leaf"):
-    """
-    Parse one certificate. role = leaf | intermediate | root.
-    leaf:         full analysis + meta dict
-    intermediate: signing key + hash (weakest-link)
-    root:         signing key only (self-signed; hash is less meaningful)
-    """
-    if not HAS_CRYPTO:
-        return [], {}
-    findings = []
-    import re as _re
-    ROLE_LABEL = {"leaf":"Leaf certificate","intermediate":"Intermediate CA","root":"Root CA"}
-    label = ROLE_LABEL.get(role, "Certificate")
-    try:
-        cert    = x509.load_der_x509_certificate(der_bytes)
-        sig_oid = cert.signature_algorithm_oid.dotted_string
-        cn_list = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
-        cn      = cn_list[0].value if cn_list else "N/A"
-        iss_list= cert.issuer.get_attributes_for_oid(NameOID.COMMON_NAME)
-        issuer  = iss_list[0].value if iss_list else "N/A"
-
-        if role != "root" and cert.signature_hash_algorithm:
-            raw = cert.signature_hash_algorithm.name.upper()
-            hash_norm = _re.sub(r'SHA(\d)',r'SHA-\1',raw).replace("SHA-3-","SHA3-")
-            findings.append({"ftype":"sig_hash","algo":hash_norm,
-                "context":f"{label} ({cn}) — signature hash algorithm",
-                "source":f"OID {sig_oid}"})
-
-        pub = cert.public_key()
-        curve_map = {"secp256r1":"P256","secp384r1":"P384","secp521r1":"P521",
-                     "secp192r1":"P192","secp224r1":"P224"}
-        if isinstance(pub, rsa.RSAPublicKey):
-            bits = pub.key_size
-            algo = f"RSA-PSS-{bits}" if "1.2.840.113549.1.1.10" in sig_oid else f"RSA-PKCS1-{bits}"
-            findings.append({"ftype":"sig_key","algo":algo,
-                "context":f"{label} ({cn}) — {bits}-bit RSA signing key",
-                "source":"SubjectPublicKeyInfo"})
-        elif isinstance(pub, ec.EllipticCurvePublicKey):
-            curve = pub.curve.name
-            findings.append({"ftype":"sig_key","algo":"ECDSA-"+curve_map.get(curve,curve),
-                "context":f"{label} ({cn}) — {curve} signing key",
-                "source":"SubjectPublicKeyInfo"})
-        elif isinstance(pub, ed25519.Ed25519PublicKey):
-            findings.append({"ftype":"sig_key","algo":"Ed25519",
-                "context":f"{label} ({cn}) — Ed25519 signing key","source":"SubjectPublicKeyInfo"})
-        elif isinstance(pub, ed448.Ed448PublicKey):
-            findings.append({"ftype":"sig_key","algo":"Ed448",
-                "context":f"{label} ({cn}) — Ed448 signing key","source":"SubjectPublicKeyInfo"})
-
-        if role == "leaf":
-            try:
-                ski = cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_KEY_IDENTIFIER)
-                if ski:
-                    findings.append({"ftype":"ski_info","algo":"SHA-1",
-                        "context":"Subject Key Identifier (RFC 5280 §4.2.1.2 — identifier only, not security-relevant)",
-                        "source":"X.509 Extension"})
-            except: pass
-
-        meta = {}
-        if role == "leaf":
-            meta = {
-                "subject": cn, "issuer": issuer,
-                "not_before": str(cert.not_valid_before_utc if hasattr(cert,"not_valid_before_utc") else cert.not_valid_before),
-                "not_after":  str(cert.not_valid_after_utc  if hasattr(cert,"not_valid_after_utc")  else cert.not_valid_after),
-            }
-        return findings, meta
-    except Exception:
-        return [], {}
-
-
-def do_scan(host, port=443):
-    findings = []
-    meta     = {"host": host, "port": port,
-                "scanned_at": datetime.datetime.utcnow().isoformat() + "Z"}
-
-    # IP
-    try:
-        meta["ip"] = socket.gethostbyname(host)
-    except:
-        meta["ip"] = "resolution failed"
-
-    # TLS connect
-    tls_ver = None
-    der_cert = None
-    try:
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = True
-        ctx.verify_mode = ssl.CERT_REQUIRED
-        with socket.create_connection((host, port), timeout=10) as raw:
-            with ctx.wrap_socket(raw, server_hostname=host) as conn:
-                tls_ver  = conn.version()
-                cipher   = conn.cipher()
-                der_cert = conn.getpeercert(binary_form=True)
-                meta["alpn"] = conn.selected_alpn_protocol()
-    except ssl.SSLCertVerificationError:
-        try:
-            ctx2 = ssl.create_default_context()
-            ctx2.check_hostname = False; ctx2.verify_mode = ssl.CERT_NONE
-            with socket.create_connection((host, port), timeout=10) as raw:
-                with ctx2.wrap_socket(raw, server_hostname=host) as conn:
-                    tls_ver  = conn.version()
-                    cipher   = conn.cipher()
-                    der_cert = conn.getpeercert(binary_form=True)
-                    meta["cert_warning"] = "Certificate verification failed"
-        except Exception as e:
-            return {"error": str(e)}, meta
-    except Exception as e:
-        return {"error": str(e)}, meta
-
-    # TLS version finding
-    ver_map = {"TLSv1.3":"TLS-1.3","TLSv1.2":"TLS-1.2","TLSv1.1":"TLS-1.1","TLSv1":"TLS-1.0"}
-    ver_key = ver_map.get(tls_ver, tls_ver)
-    meta["tls_version"] = tls_ver
-    findings.append({"algo": ver_key,
-                     "context": f"Negotiated protocol version: {tls_ver}",
-                     "source": "TLS handshake", **pqc_lookup(ver_key)})
-
-    # Supported versions enumeration
-    supported = []
-    for pn, pc in [("TLS-1.3", getattr(ssl.TLSVersion,"TLSv1_3",None)),
-                   ("TLS-1.2", getattr(ssl.TLSVersion,"TLSv1_2",None))]:
-        if not pc: continue
-        try:
-            ctx_v = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-            ctx_v.check_hostname = False; ctx_v.verify_mode = ssl.CERT_NONE
-            ctx_v.minimum_version = pc; ctx_v.maximum_version = pc
-            with socket.create_connection((host, port), timeout=4) as raw:
-                with ctx_v.wrap_socket(raw, server_hostname=host):
-                    supported.append(pn)
-        except: pass
-    meta["supported_versions"] = supported
-
-    # Downgrade risk: server accepts both TLS 1.3 and TLS 1.2
-    has_tls13 = "TLS-1.3" in supported
-    has_tls12 = "TLS-1.2" in supported
-    if has_tls13 and has_tls12:
-        meta["downgrade_risk"] = True
-        findings.append({
-            "algo": "TLS-Downgrade",
-            "context": (
-                "Downgrade risk: server accepts both TLS 1.3 and TLS 1.2. "
-                "An attacker who can interfere with the connection can force a fallback "
-                "to TLS 1.2, stripping any PQC key exchange protection. "
-                "Fix: disable TLS 1.2 if all clients support TLS 1.3, or deploy TLS 1.3-only mode."
-            ),
-            "source": "Version enumeration",
-            "rating": 1, "threat": "HIGH", "category": "Protocol",
-            "quantum": "Depends", "nist": "Conditional", "migrate": "Disable TLS 1.2",
-        })
-    else:
-        meta["downgrade_risk"] = False
-        for v in supported:
-            if v != ver_key:
-                findings.append({"algo": v, "context": "Also accepted by server",
-                                 "source": "Version enumeration", **pqc_lookup(v)})
-
-    # KEX group probe
-    if ver_key == "TLS-1.3":
-        kex_id, kex_name = probe_kex_group(host, port)
-        if kex_name and not str(kex_name).startswith("probe:"):
-            # Probe succeeded — we know the exact group
-            desc = KEX_DESCRIPTIONS.get(kex_name, f"Key exchange group (IANA 0x{kex_id:04x})").format(id=kex_id)
-            meta["kex_group"] = kex_name
-            findings.append({"algo": kex_name, "context": desc,
-                             "source": "Raw TLS ServerHello → key_share extension",
-                             **pqc_lookup(kex_name)})
-        else:
-            # Probe failed — emit a conservative X25519 finding so the UI always
-            # shows a KEX entry, tagged as estimated. X25519 is the most common
-            # TLS 1.3 group and the safe conservative assumption when unknown.
-            meta["kex_probe_error"] = kex_name or "probe:unknown"
-            meta["kex_probe"] = (
-                "Key exchange group could not be determined — the server filtered "
-                "the raw TLS probe. Showing X25519 as a conservative estimate: "
-                "the actual group may be stronger (e.g. X25519+ML-KEM-768 if the "
-                "server has deployed PQC hybrid key exchange)."
-            )
-            meta["kex_group"] = "X25519"
-            findings.append({
-                "algo": "X25519",
-                "context": (
-                    "TLS 1.3 key exchange — actual group unknown (probe filtered by server). "
-                    "X25519 shown as conservative estimate. If this site uses Cloudflare or Fastly, "
-                    "the actual group may already be X25519+ML-KEM-768."
-                ),
-                "source": "Estimated — raw probe filtered",
-                **pqc_lookup("X25519"),
-            })
-    else:
-        # TLS 1.2: probe the actual ECDHE curve from ServerKeyExchange
-        cipher_name_str = cipher[0] if cipher else ""
-        if "ECDHE" in cipher_name_str.upper():
-            actual_curve = probe_tls12_kex_curve(host, port)
-            if actual_curve:
-                meta["kex_group"] = actual_curve
-                meta["kex_probe"] = f"TLS 1.2 ECDHE curve from ServerKeyExchange: {actual_curve}"
-            else:
-                actual_curve = "ECDH-P256"
-                meta["kex_probe"] = "TLS 1.2 curve probe failed — defaulting to ECDH-P256 (conservative estimate)"
-            findings.append({
-                "algo": actual_curve,
-                "context": f"TLS 1.2 key exchange: {actual_curve} (read from ServerKeyExchange record)",
-                "source": "Raw TLS 1.2 ServerKeyExchange",
-                **pqc_lookup(actual_curve),
-            })
-        else:
-            meta["kex_probe"] = f"Skipped — server uses {tls_ver}, not TLS 1.3."
-
-    # Cipher suite
-    if cipher:
-        meta["cipher_suite"] = cipher[0]
-        for algo, ctx_str in parse_cipher_suite(cipher[0]):
-            findings.append({"algo": algo, "context": ctx_str,
-                             "source": f"Cipher suite: {cipher[0]}", **pqc_lookup(algo)})
-
-    # Certificate chain: leaf + intermediates + root
-    if HAS_CRYPTO:
-        aia_errors = []
-        chain = get_cert_chain(host, port)
-        if not chain and der_cert:
-            chain = [("leaf", der_cert)]
-        # AIA chase for any remaining leaf-only chains
-        if len(chain) == 1:
-            aia_extra = _fetch_aia_intermediates(chain[0][1], errors=aia_errors)
-            chain.extend(aia_extra)
-        if aia_errors:
-            meta["aia_errors"] = aia_errors
-        chain_meta = []
-        for role, der in chain:
-            cert_findings, cert_meta = parse_cert(der_bytes=der, role=role)
-            if role == "leaf" and cert_meta:
-                meta["certificate"] = cert_meta
-            for f in cert_findings:
-                if f["ftype"] == "ski_info":
-                    meta["ski_note"] = f["context"]
-                    continue
-                findings.append({"algo": f["algo"], "context": f["context"],
-                                 "source": f["source"], **pqc_lookup(f["algo"])})
-            if cert_meta:
-                chain_meta.append({"role": role, **cert_meta})
-            else:
-                # still log intermediate/root in chain_meta even without meta dict
-                try:
-                    c2 = x509.load_der_x509_certificate(der)
-                    cn_l = c2.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
-                    chain_meta.append({"role": role,
-                                       "subject": cn_l[0].value if cn_l else "N/A"})
-                except Exception:
-                    chain_meta.append({"role": role})
-        meta["cert_chain"] = chain_meta
-        meta["cert_chain_depth"] = len(chain)
-
-    # HTTP headers + CDN detection
-    if HAS_REQUESTS:
-        try:
-            scheme = "https" if port in (443,8443) else "http"
-            r = req_lib.get(f"{scheme}://{host}:{port}/", timeout=8,
-                            verify=False, allow_redirects=True,
-                            headers={"User-Agent":"CryptoScanner/1.0"})
-            hdrs = {k.lower():v for k,v in r.headers.items()}
-            meta["http_status"]  = r.status_code
-            meta["final_url"]    = r.url
-            meta["hsts"]         = hdrs.get("strict-transport-security","")
-            meta["server"]       = hdrs.get("server","")
-
-            # CDN detection — identify whether PQC is CDN-level or origin-level
-            server_hdr = meta["server"].lower()
-            cf_hdr     = hdrs.get("cf-ray","") or hdrs.get("cf-cache-status","")
-            via_hdr    = hdrs.get("via","").lower()
-            x_served   = hdrs.get("x-served-by","").lower()
-
-            CDN_MAP = {
-                "cloudflare":  ("Cloudflare",  True,  "Cloudflare deploys X25519+ML-KEM-768 by default for browser clients."),
-                "github.com":  ("GitHub Pages (Fastly)", True,  "Fastly (GitHub Pages CDN) deploys X25519+ML-KEM-768 for browser clients."),
-                "fastly":      ("Fastly",       True,  "Fastly deploys X25519+ML-KEM-768 for browser clients."),
-                "aws":         ("AWS CloudFront", False, "AWS CloudFront supports X25519+ML-KEM-768 — check if enabled in distribution settings."),
-                "cloudfront":  ("AWS CloudFront", False, "AWS CloudFront supports X25519+ML-KEM-768 — check if enabled in distribution settings."),
-                "akamai":      ("Akamai",       False, "Akamai supports PQC — check your property configuration."),
-                "vercel":      ("Vercel",        True,  "Vercel (Cloudflare-backed) deploys X25519+ML-KEM-768 for browser clients."),
-            }
-
-            cdn_provider     = None
-            browser_pqc      = False
-            browser_pqc_note = None
-
-            for key, (name, auto_pqc, note) in CDN_MAP.items():
-                if (key in server_hdr or key in via_hdr or key in x_served
-                        or (key == "cloudflare" and cf_hdr)):
-                    cdn_provider     = name
-                    browser_pqc      = auto_pqc
-                    browser_pqc_note = note
-                    break
-
-            if cdn_provider:
-                meta["cdn_provider"]      = cdn_provider
-                meta["browser_pqc"]       = browser_pqc
-                meta["browser_pqc_note"]  = browser_pqc_note
-        except: pass
-
-    # Score
-    scores = [f["rating"] for f in findings]
-    portfolio = round(sum(scores)/len(scores)) if scores else 3
-
-    # HNDL risk: only actual Key Exchange findings, NOT the downgrade warning.
-    # TLS-Downgrade is a conditional protocol risk, not a confirmed KEX weakness.
-    # A site that negotiated TLS 1.3 + X25519+ML-KEM-768 but also accepts TLS 1.2
-    # should not be marked as having HNDL risk — the actual session was quantum-safe.
-    hndl_count = sum(1 for f in findings
-                     if f["threat"] in ("CRITICAL","HIGH")
-                     and f["category"] == "Key Exchange"
-                     and f.get("algo") != "TLS-Downgrade")
-    sig_count  = sum(1 for f in findings
-                     if f["threat"] in ("CRITICAL","HIGH") and f["category"] == "Signature")
-
-    return {
-        "findings":        findings,
-        "portfolio_score": portfolio,
-        "portfolio_label": ["Broken","Critical","Insecure","Marginal","Acceptable","PQC Safe"][portfolio],
-        "hndl_risk":       hndl_count > 0,
-        "hndl_count":      hndl_count,
-        "impersonation_risk": sig_count > 0,
-        "impersonation_count": sig_count,
-    }, meta
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ROUTES
-# ══════════════════════════════════════════════════════════════════════════════
-
-@app.route("/health")
-def health():
-    return jsonify({"status": "ok", "time": datetime.datetime.utcnow().isoformat()})
-
-
-@app.route("/scan")
-def scan():
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown").split(",")[0].strip()
-    if is_rate_limited(ip):
-        return jsonify({"error": "Rate limit exceeded. Max 10 scans per minute."}), 429
-
-    domain = request.args.get("domain","").strip()
-    port   = request.args.get("port", 443)
-
-    if not domain:
-        return jsonify({"error": "Missing ?domain= parameter"}), 400
-
-    # Sanitise — only allow hostname characters
-    import re
-    domain = domain.replace("https://","").replace("http://","").rstrip("/").split("/")[0]
-    if not re.match(r'^[a-zA-Z0-9.\-]+$', domain):
-        return jsonify({"error": "Invalid domain"}), 400
-
-    try:
-        port = int(port)
-        if not (1 <= port <= 65535):
-            raise ValueError
-    except ValueError:
-        return jsonify({"error": "Invalid port"}), 400
-
-    # Block private IPs
-    try:
-        ip_obj = ipaddress.ip_address(socket.gethostbyname(domain))
-        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
-            return jsonify({"error": "Private/internal addresses not allowed"}), 403
-    except: pass
-
-    import ipaddress
-    result, meta = do_scan(domain, port)
-    if "error" in result:
-        return jsonify({"error": result["error"], "meta": meta}), 502
-
-    return jsonify({"meta": meta, **result})
-
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+
+    /* ── MASTHEAD ──────────────────────────────────────────── */
+    header {
+      max-width: 860px; margin: 0 auto;
+      padding: 48px 24px 24px;
+      border-bottom: 2px solid var(--ink);
+    }
+
+    .header-eyebrow {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9px; font-weight: 500; letter-spacing: .25em;
+      color: var(--muted); text-transform: uppercase;
+      margin-bottom: 8px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    h1 {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 38px; font-weight: 700; color: var(--ink);
+      line-height: 1.15; margin-bottom: 10px;
+      letter-spacing: -.01em;
+    }
+    h1 em { font-style: italic; font-weight: 400; }
+    .header-sub {
+      font-size: 14px; color: var(--muted); line-height: 1.7;
+      max-width: 540px; font-weight: 300;
+      margin-top: 10px;
+    }
+
+    /* ── MAIN ──────────────────────────────────────────────── */
+    main { max-width: 860px; margin: 0 auto; padding: 28px 24px 80px; }
+    .section { position: relative; }
+
+    /* ── SCAN BOX ──────────────────────────────────────────── */
+    /* ── KEYBOARD VARIABLES ───────────────────────────────── */
+    :root {
+      --key-face:    #f0ebe0;
+      --key-side:    #b0a48a;
+      --key-shadow:  #9a9080;
+      --key-active:  #e4ddd0;
+      --key-border:  #c8b99a;
+      --kb-plate:    #d8d0c0;
+      --kb-plate2:   #c8c0b0;
+    }
+
+    /* ── SCAN BOX (keyboard plate) ─────────────────────────── */
+    .scan-box {
+      background: var(--kb-plate);
+      border: 1px solid var(--key-shadow);
+      border-bottom: 3px solid var(--key-shadow);
+      border-radius: 6px;
+      padding: 10px 10px 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,.12), 0 1px 3px rgba(0,0,0,.08);
+      margin-bottom: 10px;
+    }
+
+    /* The URL bar — a wide "key" */
+    .scan-row {
+      display: flex;
+      background: var(--key-face);
+      border: 1px solid var(--key-border);
+      border-bottom: 3px solid var(--key-side);
+      border-radius: 5px;
+      overflow: hidden;
+      box-shadow: 0 1px 0 var(--key-shadow), inset 0 1px 0 rgba(255,255,255,.6);
+      transition: box-shadow .1s, border-bottom-width .1s, transform .1s;
+    }
+    .scan-row:focus-within {
+      border-color: var(--ink);
+      border-bottom-color: #555;
+      box-shadow: 0 1px 0 #444, inset 0 1px 0 rgba(255,255,255,.6), 0 0 0 2px rgba(26,23,20,.08);
+    }
+
+    .scan-prefix {
+      display: flex; align-items: center; padding: 0 12px;
+      font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+      color: var(--muted); border-right: 1px solid var(--key-border);
+      white-space: nowrap;
+      background: linear-gradient(180deg, rgba(255,255,255,.35) 0%, transparent 100%);
+      user-select: none;
+    }
+    #domain-input {
+      flex: 1; background: transparent; border: none; outline: none;
+      color: var(--ink); font-family: 'IBM Plex Mono', monospace;
+      font-size: 14px; padding: 15px 14px; height: 52px;
+    }
+    #domain-input::placeholder { color: var(--key-side); }
+
+    /* Inspect button — its own standalone key */
+    #scan-btn {
+      background: linear-gradient(180deg, #2a2520 0%, #1a1714 100%);
+      color: #f0ebe0;
+      border: 1px solid #111;
+      border-bottom: 3px solid #0a0807;
+      border-radius: 5px;
+      padding: 0 22px;
+      margin: 8px 0 0;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px; font-weight: 500; cursor: pointer;
+      white-space: nowrap; letter-spacing: .05em;
+      box-shadow: 0 1px 0 #000, inset 0 1px 0 rgba(255,255,255,.12);
+      transition: all .08s;
+      height: 52px;
+      display: block;
+      width: 100%;
+    }
+    #scan-btn:hover:not(:disabled) {
+      background: linear-gradient(180deg, #3a3530 0%, #2a2520 100%);
+    }
+    #scan-btn:active:not(:disabled) {
+      border-bottom-width: 1px;
+      transform: translateY(2px);
+      box-shadow: 0 0 0 #000, inset 0 1px 0 rgba(255,255,255,.08);
+    }
+    #scan-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* ── EXAMPLES (pill keyboard row) ─────────────────────── */
+    .examples-panel {
+      margin-top: 8px;
+      padding: 2px 2px 0;
+      display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
+    }
+
+    /* Each pill = a keycap */
+    .eg-pill {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      padding: 5px 10px 6px;
+      border-radius: 4px;
+      background: linear-gradient(180deg, var(--key-face) 0%, #e6dfd4 100%);
+      border: 1px solid var(--key-border);
+      border-bottom: 3px solid var(--key-side);
+      color: #5a5040;
+      cursor: pointer;
+      white-space: nowrap;
+      box-shadow: 0 1px 0 var(--key-shadow), inset 0 1px 0 rgba(255,255,255,.7);
+      transition: all .08s;
+      user-select: none;
+      display: inline-block;
+      position: relative;
+      top: 0;
+    }
+    .eg-pill:hover {
+      background: linear-gradient(180deg, #fff 0%, #f5f0e8 100%);
+      color: var(--ink);
+      border-color: #a09080;
+      border-bottom-color: #887868;
+    }
+    .eg-pill:active {
+      border-bottom-width: 1px;
+      top: 2px;
+      box-shadow: 0 0 0 var(--key-shadow), inset 0 1px 0 rgba(255,255,255,.4);
+      background: linear-gradient(180deg, #e4ddd0 0%, #d8d0c4 100%);
+    }
+    /* PQC-verified pill — slightly darker keycap */
+    .eg-pill--pqc {
+      background: linear-gradient(180deg, #d8d0c4 0%, #c8c0b4 100%);
+      border-color: #a09080;
+      border-bottom-color: #807060;
+      box-shadow: 0 1px 0 #807060, inset 0 1px 0 rgba(255,255,255,.5);
+      color: #3a3028;
+    }
+
+    /* ── STATUS ────────────────────────────────────────────── */
+    #status { font-size: 12px; color: var(--muted); min-height: 20px;
+              margin-bottom: 20px; font-style: italic; font-family: 'Source Serif 4', serif; }
+    .spinner {
+      display: inline-block; width: 11px; height: 11px;
+      border: 2px solid var(--ink); border-top-color: transparent;
+      border-radius: 50%; animation: spin .7s linear infinite;
+      vertical-align: middle; margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── VERDICT ───────────────────────────────────────────── */
+    .verdict-card {
+      border-radius: 2px; border: 1px solid var(--rule);
+      border-left-width: 5px;
+      padding: 22px 24px; margin-bottom: 28px;
+      display: grid; grid-template-columns: auto 1fr;
+      gap: 20px; align-items: center;
+      background: #fff;
+      box-shadow: 2px 2px 0 var(--paper2);
+    }
+    .verdict-grade {
+      font-family: 'Playfair Display', serif;
+      font-size: 48px; font-weight: 700; line-height: 1;
+      min-width: 64px; text-align: center;
+    }
+    .verdict-phrase {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px; font-weight: 500; letter-spacing: .08em;
+      text-transform: uppercase; margin-bottom: 5px; opacity: .75;
+    }
+    .verdict-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px; font-weight: 700; margin-bottom: 5px;
+    }
+    .verdict-domain {
+      font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+      color: var(--muted); margin-bottom: 8px;
+    }
+    .verdict-plain { font-size: 14px; line-height: 1.75; color: var(--muted); font-weight: 300; }
+
+    /* ── SECTIONS ──────────────────────────────────────────── */
+    .section { margin-bottom: 32px; }
+    .section-header {
+      display: flex; align-items: flex-start; gap: 14px;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--rule);
+    }
+    .section-numeral {
+      font-family: 'Playfair Display', serif;
+      font-size: 28px; font-weight: 400; font-style: italic;
+      color: var(--rule2); line-height: 1; flex-shrink: 0;
+      width: 28px; text-align: center; margin-top: 2px;
+    }
+    .section-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 16px; font-weight: 700; color: var(--ink);
+    }
+    .section-desc {
+      font-size: 13px; color: var(--muted); margin-top: 3px;
+      line-height: 1.65; font-weight: 300;
+    }
+    .section-desc strong { color: var(--ink2); font-weight: 600; }
+    .section-desc em { font-style: italic; }
+    /* ── MARGIN NUMERALS ───────────────────────────────────── */
+    .margin-anchor {
+      position: absolute;
+      left: -130px; top: 0;
+      width: 110px;
+      display: flex; flex-direction: column; align-items: center;
+      gap: 10px;
+    }
+    .margin-roman {
+      font-family: 'Playfair Display', serif;
+      font-size: 52px; font-weight: 400; font-style: italic;
+      color: var(--rule2); line-height: 1;
+      border-bottom: 1px solid var(--rule);
+      padding-bottom: 8px; width: 100%; text-align: center;
+    }
+    .margin-illo { opacity: .7; }
+    /* hide old inline numeral when margin is shown */
+    .section-numeral-inline { display: none; }
+
+
+
+    /* ── FINDING CARDS ─────────────────────────────────────── */
+    .finding-card {
+      background: #fff;
+      border: 1px solid var(--rule);
+      border-radius: 2px;
+      overflow: hidden; margin-bottom: 8px;
+      box-shadow: 1px 1px 0 var(--paper2);
+    }
+    .finding-top {
+      padding: 14px 18px;
+      display: grid; grid-template-columns: 1fr auto;
+      gap: 12px; align-items: start;
+    }
+    .finding-algo {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12.5px; font-weight: 500; margin-bottom: 4px;
+    }
+    .finding-plain { font-size: 13px; color: var(--muted); line-height: 1.6; font-weight: 300; }
+
+    /* stamp-style status pills */
+    .status-pill {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px; font-weight: 500; padding: 4px 10px;
+      border-radius: 2px; border: 1.5px solid; white-space: nowrap;
+      flex-shrink: 0; text-align: center; text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+
+    .detail-toggle {
+      width: 100%; background: var(--paper2); border: none;
+      border-top: 1px solid var(--rule);
+      color: var(--muted); font-family: 'Source Serif 4', serif;
+      font-size: 11.5px; padding: 8px 18px; cursor: pointer;
+      text-align: left; transition: color .12s; display: flex;
+      align-items: center; gap: 6px; font-style: italic;
+    }
+    .detail-toggle:hover { color: var(--ink); background: var(--paper3); }
+
+    .finding-details {
+      border-top: 0px solid var(--rule);
+      padding: 0 18px;
+      max-height: 0; overflow: hidden;
+      transition: max-height .35s ease, padding .35s ease;
+      background: var(--paper);
+    }
+    .finding-details.open {
+      max-height: 800px; padding: 16px 18px;
+      border-top: 1px solid var(--rule);
+    }
+
+    .detail-grid { display: grid; grid-template-columns: 140px 1fr; gap: 10px 16px; }
+    .detail-label {
+      font-size: 10px; color: var(--muted); font-weight: 600;
+      text-transform: uppercase; letter-spacing: .1em;
+      padding-top: 2px; font-family: 'IBM Plex Mono', monospace;
+    }
+    .detail-value { font-size: 12.5px; color: var(--ink2); line-height: 1.65; }
+    .detail-value.code { font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+    .detail-value.good { color: var(--green); }
+    .detail-value.warn { color: var(--orange); }
+
+    /* ── CERT META ─────────────────────────────────────────── */
+    .cert-meta {
+      background: var(--paper2);
+      border: 1px solid var(--rule);
+      border-radius: 2px; padding: 14px 16px; margin-bottom: 10px;
+    }
+    .cert-row {
+      display: grid; grid-template-columns: 100px 1fr;
+      gap: 4px 12px; font-size: 12px; margin-bottom: 5px;
+    }
+    .cert-key {
+      color: var(--muted); font-size: 10px; text-transform: uppercase;
+      letter-spacing: .08em; font-family: 'IBM Plex Mono', monospace;
+      font-weight: 500; padding-top: 1px;
+    }
+    .cert-val {
+      font-family: 'IBM Plex Mono', monospace;
+      color: var(--ink); word-break: break-all; font-size: 11.5px;
+    }
+
+    /* ── ACTION CARDS ──────────────────────────────────────── */
+    .action-card {
+      border-radius: 2px; border: 1px solid var(--rule);
+      border-left-width: 4px;
+      padding: 18px 20px; margin-bottom: 10px;
+      background: #fff;
+      box-shadow: 1px 1px 0 var(--paper2);
+    }
+    .action-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 14px; font-weight: 700; margin-bottom: 12px;
+    }
+    .action-body { font-size: 13px; line-height: 1.8; color: var(--muted); font-weight: 300; }
+    .action-body strong { color: var(--ink2); font-weight: 600; }
+    .action-body br + br + strong { /* section heads */ }
+
+    /* ── TIMELINE ──────────────────────────────────────────── */
+    .timeline { display: flex; border-radius: 1px; overflow: hidden; height: 6px; margin: 14px 0 5px; border: 1px solid var(--rule); }
+    .tl-safe { background: var(--paper2); }
+    .tl-danger { flex: 1; opacity: .75; }
+    .tl-labels {
+      display: flex; justify-content: space-between;
+      font-size: 10px; color: var(--muted);
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .tl-note { font-size: 11px; color: var(--muted); margin-top: 10px; font-style: italic; }
+
+    /* ── INFO / ERROR ──────────────────────────────────────── */
+    .info-note {
+      background: var(--paper2); border: 1px solid var(--rule);
+      border-left: 3px solid var(--navy);
+      border-radius: 2px; padding: 10px 14px;
+      font-size: 12.5px; color: var(--muted);
+      line-height: 1.6; margin-bottom: 10px; font-style: italic;
+    }
+    .error-box {
+      background: #fff5f5; border: 1px solid #fca5a5;
+      border-left: 4px solid var(--red);
+      border-radius: 2px; padding: 16px;
+      color: var(--red); font-size: 13px; line-height: 1.7;
+    }
+    .error-box a { color: var(--navy); }
+    .divider {
+      border: none;
+      border-top: 1px solid var(--rule);
+      margin: 28px 0;
+    }
+    .divider-heavy {
+      border: none;
+      border-top: 2px solid var(--ink);
+      margin: 32px 0 28px;
+    }
+
+    /* ── FOOTER ────────────────────────────────────────────── */
+    footer {
+      text-align: center; padding: 20px 24px;
+      font-size: 11px; color: var(--rule2);
+      border-top: 2px solid var(--rule);
+      font-family: 'IBM Plex Mono', monospace;
+      letter-spacing: .05em;
+    }
+
+    /* ── ANIMATIONS ────────────────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade-up { animation: fadeUp .3s ease forwards; }
+
+    /* ── RESPONSIVE ────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      header { padding: 20px 16px 20px; }
+      main   { padding: 20px 16px 60px; }
+
+      /* header layout on mobile */
+      header > div { gap: 12px; align-items: flex-start; }
+      header > div > div:first-child { width: 85px !important; flex-shrink: 0; align-self: stretch; }
+      header > div > div:first-child svg { width: 100% !important; height: 100% !important; display: block; }
+      header > div > div:last-child { flex: 1; min-width: 0; }
+      h1 { font-size: 21px; line-height: 1.2; }
+
+      h1 { font-size: 22px; }
+      .header-sub { font-size: 13px; margin-top: 8px; }
+
+      /* scan box */
+      .scan-box { padding: 8px 8px 10px; }
+      .scan-row { border-radius: 5px; }
+      .scan-prefix { padding: 0 10px; font-size: 11px; }
+      #domain-input { font-size: 16px; padding: 12px; height: 46px; }
+      #scan-btn { display: block; width: 100%; margin: 6px 0 0; height: 44px; border-radius: 5px; font-size: 13px; border: 1px solid #111; border-bottom: 3px solid #0a0807; }
+
+      .eg-pill { font-size: 9.5px; padding: 4px 8px 5px; }
+
+      /* cards */
+      .verdict-card { grid-template-columns: 1fr; gap: 12px; padding: 16px; }
+      .verdict-grade { font-size: 36px; min-width: 48px; }
+      .verdict-title { font-size: 17px; }
+
+      .margin-anchor { display: none; }
+      .section-numeral-inline { display: block; }
+            .section-header { gap: 10px; }
+      .section-numeral { font-size: 22px; width: 22px; }
+      .section-title { font-size: 14px; }
+      .section-desc { font-size: 12px; }
+
+      .finding-top { grid-template-columns: 1fr; gap: 8px; }
+      .status-pill { display: inline-block; }
+      .detail-grid { grid-template-columns: 1fr; gap: 8px; }
+      .detail-label { padding-bottom: 0; }
+
+      .cert-row { grid-template-columns: 80px 1fr; font-size: 11px; }
+
+      .action-card { padding: 14px 16px; }
+      .action-title { font-size: 13px; }
+      .action-body { font-size: 12px; }
+
+      .tl-labels { font-size: 9px; }
+    }
+
+    
+
+
+    /* ── TOOLTIPS ──────────────────────────────────────────── */
+    .jargon {
+      border-bottom: 1px dashed var(--muted);
+      cursor: help;
+    }
+    #tip {
+      position: fixed;
+      z-index: 99999;
+      max-width: 260px;
+      background: #1a1714;
+      color: #f0e8d8;
+      font-family: 'Source Serif 4', serif;
+      font-size: 12.5px;
+      font-weight: 300;
+      line-height: 1.65;
+      padding: 10px 14px;
+      border-radius: 3px;
+      box-shadow: 3px 4px 0 rgba(0,0,0,.3);
+      pointer-events: none;
+      display: none;
+    }
+    #tip strong { font-weight: 600; color: #e8d9c0; }
+
+  </style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:28px;justify-content:center">
+    <!-- IBM dilution refrigerator — minimalist ink illustration -->
+    <div style="align-self:stretch;display:flex;align-items:stretch;flex-shrink:0;width:120px">
+    <svg viewBox="0 0 110 160" fill="none" xmlns="http://www.w3.org/2000/svg"
+         preserveAspectRatio="xMidYMid meet"
+         style="opacity:.75;width:auto;height:100%;min-width:80px">
+      <!-- mounting plate -->
+      <rect x="25" y="4" width="60" height="7" rx="2" fill="#c8b99a" stroke="#8a7a62" stroke-width="1"/>
+      <!-- hanging rod -->
+      <line x1="55" y1="11" x2="55" y2="22" stroke="#8a7a62" stroke-width="1.5"/>
+      <!-- stage 1 — top disk (wide) -->
+      <ellipse cx="55" cy="26" rx="28" ry="5" fill="#e8dfc8" stroke="#8a7a62" stroke-width="1"/>
+      <!-- wires down from stage 1 -->
+      <line x1="34" y1="31" x2="34" y2="48" stroke="#a09070" stroke-width="1" stroke-dasharray="2,2"/>
+      <line x1="55" y1="31" x2="55" y2="48" stroke="#a09070" stroke-width="1" stroke-dasharray="2,2"/>
+      <line x1="76" y1="31" x2="76" y2="48" stroke="#a09070" stroke-width="1" stroke-dasharray="2,2"/>
+      <!-- stage 2 disk -->
+      <ellipse cx="55" cy="49" rx="22" ry="4.5" fill="#dfd5bc" stroke="#8a7a62" stroke-width="1"/>
+      <!-- wires -->
+      <line x1="38" y1="53" x2="38" y2="67" stroke="#a09070" stroke-width="1" stroke-dasharray="2,2"/>
+      <line x1="55" y1="53" x2="55" y2="67" stroke="#a09070" stroke-width="1" stroke-dasharray="2,2"/>
+      <line x1="72" y1="53" x2="72" y2="67" stroke="#a09070" stroke-width="1" stroke-dasharray="2,2"/>
+      <!-- stage 3 disk -->
+      <ellipse cx="55" cy="68" rx="17" ry="4" fill="#d4c9ae" stroke="#8a7a62" stroke-width="1"/>
+      <!-- wires -->
+      <line x1="43" y1="72" x2="43" y2="84" stroke="#a09070" stroke-width="1" stroke-dasharray="2,2"/>
+      <line x1="55" y1="72" x2="55" y2="84" stroke="#a09070" stroke-width="1" stroke-dasharray="2,2"/>
+      <line x1="67" y1="72" x2="67" y2="84" stroke="#a09070" stroke-width="1" stroke-dasharray="2,2"/>
+      <!-- stage 4 disk (smaller) -->
+      <ellipse cx="55" cy="85" rx="13" ry="3.5" fill="#c8bda0" stroke="#8a7a62" stroke-width="1"/>
+      <!-- wires to mixing chamber -->
+      <line x1="47" y1="88" x2="47" y2="98" stroke="#a09070" stroke-width="1"/>
+      <line x1="55" y1="88" x2="55" y2="98" stroke="#a09070" stroke-width="1"/>
+      <line x1="63" y1="88" x2="63" y2="98" stroke="#a09070" stroke-width="1"/>
+      <!-- mixing chamber cylinder -->
+      <rect x="40" y="98" width="30" height="22" rx="3" fill="#e8dfc8" stroke="#8a7a62" stroke-width="1.2"/>
+      <ellipse cx="55" cy="98" rx="15" ry="3" fill="#dfd5bc" stroke="#8a7a62" stroke-width="1"/>
+      <!-- qubit chip at bottom of mixing chamber -->
+      <ellipse cx="55" cy="120" rx="15" ry="3" fill="#c8b99a" stroke="#7a6a52" stroke-width="1"/>
+      <!-- qubit detail lines on chip -->
+      <line x1="44" y1="120" x2="66" y2="120" stroke="#7a6a52" stroke-width=".6"/>
+      <line x1="55" y1="117" x2="55" y2="123" stroke="#7a6a52" stroke-width=".6"/>
+      <circle cx="55" cy="120" r="2.5" fill="none" stroke="#7a6a52" stroke-width=".8"/>
+      <!-- outer vacuum can -->
+      <path d="M33 98 Q28 104 28 112 Q28 128 33 132 L40 134" stroke="#b0a080" stroke-width="1" fill="none" stroke-dasharray="3,2"/>
+      <path d="M77 98 Q82 104 82 112 Q82 128 77 132 L70 134" stroke="#b0a080" stroke-width="1" fill="none" stroke-dasharray="3,2"/>
+      <!-- label -->
+    </svg>
+    </div>
+    <div>
+      <h1>Can a quantum computer<br><em>break this website?</em></h1>
+      <p class="header-sub">
+        This tool performs a live TLS handshake with a website and inspects the cryptographic
+        algorithms your browser would use to connect to it — the key exchange, the certificate
+        chain, and the cipher. It then explores how vulnerable that connection would be
+        in a world with quantum computers.
+      </p>
+    </div>
+  </div>
+
+</header>
+
+<main>
+  <div class="scan-box">
+    <div class="scan-row">
+      <div class="scan-prefix">https://</div>
+      <input id="domain-input" type="text" placeholder="ifsca.gov.in · dea.gov.in · finmin.nic.in"
+             autocomplete="off" spellcheck="false"/>
+    </div>
+    <button id="scan-btn" onclick="scan()">Inspect →</button>
+    <div class="examples-panel">
+      <!-- Regulators -->
+      <span class="eg-pill" onclick="pick('ifsca.gov.in')">ifsca.gov.in</span>
+      <span class="eg-pill" onclick="pick('sebi.gov.in')">sebi.gov.in</span>
+      <span class="eg-pill" onclick="pick('rbi.org.in')">rbi.org.in</span>
+      <span class="eg-pill" onclick="pick('irdai.gov.in')">irdai.gov.in</span>
+      <span class="eg-pill" onclick="pick('pfrda.org.in')">pfrda.org.in</span>
+      <span class="eg-pill" onclick="pick('finmin.nic.in')">finmin.nic.in</span>
+      <span class="eg-pill" onclick="pick('dea.gov.in')">dea.gov.in</span>
+      <span class="eg-pill" onclick="pick('idrbt.ac.in')">idrbt.ac.in</span>
+      <!-- IFSCA MII -->
+      <span class="eg-pill" onclick="pick('indiainx.com')">indiainx.com</span>
+      <span class="eg-pill" onclick="pick('nseix.com')">nseix.com</span>
+      <span class="eg-pill" onclick="pick('iibx.co.in')">iibx.co.in</span>
+      <span class="eg-pill" onclick="pick('nseicc.com')">nseicc.com</span>
+      <span class="eg-pill" onclick="pick('nseclearing.in')">nseclearing.in</span>
+      <span class="eg-pill" onclick="pick('nsdl.co.in')">nsdl.co.in</span>
+      <span class="eg-pill" onclick="pick('cdslindia.com')">cdslindia.com</span>
+      <!-- Domestic Exchanges -->
+      <span class="eg-pill" onclick="pick('bseindia.com')">bseindia.com</span>
+      <span class="eg-pill" onclick="pick('nseindia.com')">nseindia.com</span>
+      <span class="eg-pill" onclick="pick('mcxindia.com')">mcxindia.com</span>
+      <span class="eg-pill" onclick="pick('ncdex.com')">ncdex.com</span>
+      <!-- Public Sector Banks -->
+      <span class="eg-pill" onclick="pick('sbi.bank.in')">sbi.bank.in</span>
+      <span class="eg-pill" onclick="pick('pnb.bank.in')">pnb.bank.in</span>
+      <span class="eg-pill" onclick="pick('canarabank.bank.in')">canarabank.bank.in</span>
+      <span class="eg-pill" onclick="pick('bankofindia.bank.in')">bankofindia.bank.in</span>
+      <span class="eg-pill" onclick="pick('bankofbaroda.bank.in')">bankofbaroda.bank.in</span>
+      <span class="eg-pill" onclick="pick('unionbankofindia.bank.in')">unionbankofindia.bank.in</span>
+      <!-- Private Banks -->
+      <span class="eg-pill" onclick="pick('hdfc.bank.in')">hdfc.bank.in</span>
+      <span class="eg-pill" onclick="pick('icici.bank.in')">icici.bank.in</span>
+      <span class="eg-pill" onclick="pick('axis.bank.in')">axis.bank.in</span>
+      <span class="eg-pill" onclick="pick('kotak.bank.in')">kotak.bank.in</span>
+      <span class="eg-pill" onclick="pick('federal.bank.in')">federal.bank.in</span>
+      <span class="eg-pill" onclick="pick('indusind.bank.in')">indusind.bank.in</span>
+      <span class="eg-pill" onclick="pick('yesbank.bank.in')">yesbank.bank.in</span>
+      <span class="eg-pill" onclick="pick('rbl.bank.in')">rbl.bank.in</span>
+      <!-- Global Banks -->
+      <span class="eg-pill" onclick="pick('sc.com')">sc.com</span>
+      <span class="eg-pill" onclick="pick('db.com')">db.com</span>
+      <span class="eg-pill" onclick="pick('barclays.com')">barclays.com</span>
+      <span class="eg-pill" onclick="pick('jpmorgan.com')">jpmorgan.com</span>
+      <span class="eg-pill" onclick="pick('citibank.com')">citibank.com</span>
+      <span class="eg-pill" onclick="pick('hsbc.com')">hsbc.com</span>
+      <!-- Insurance -->
+      <span class="eg-pill" onclick="pick('gicofindia.com')">gicofindia.com</span>
+      <span class="eg-pill" onclick="pick('licindia.in')">licindia.in</span>
+      <span class="eg-pill" onclick="pick('newindia.co.in')">newindia.co.in</span>
+      <span class="eg-pill" onclick="pick('hdfclife.com')">hdfclife.com</span>
+      <span class="eg-pill" onclick="pick('swissre.com')">swissre.com</span>
+      <span class="eg-pill" onclick="pick('iciciprulife.com')">iciciprulife.com</span>
+      <span class="eg-pill" onclick="pick('starhealth.in')">starhealth.in</span>
+      <span class="eg-pill" onclick="pick('bajajallianz.com')">bajajallianz.com</span>
+      <span class="eg-pill" onclick="pick('tataaia.com')">tataaia.com</span>
+      <span class="eg-pill" onclick="pick('munichre.com')">munichre.com</span>
+      <!-- Brokers -->
+      <span class="eg-pill" onclick="pick('anandrathigiftcity.com')">anandrathigiftcity.com</span>
+      <span class="eg-pill" onclick="pick('emkayglobal.com')">emkayglobal.com</span>
+      <span class="eg-pill" onclick="pick('indmoney.com')">indmoney.com</span>
+      <span class="eg-pill" onclick="pick('icicidirect.com')">icicidirect.com</span>
+      <span class="eg-pill" onclick="pick('angelone.in')">angelone.in</span>
+      <span class="eg-pill" onclick="pick('motilaloswal.com')">motilaloswal.com</span>
+      <span class="eg-pill" onclick="pick('zerodha.com')">zerodha.com</span>
+      <span class="eg-pill" onclick="pick('indiainfoline.com')">indiainfoline.com</span>
+      <span class="eg-pill" onclick="pick('groww.in')">groww.in</span>
+      <!-- Fund Managers -->
+      <span class="eg-pill" onclick="pick('sbimf.com')">sbimf.com</span>
+      <span class="eg-pill" onclick="pick('hdfcfund.com')">hdfcfund.com</span>
+      <span class="eg-pill" onclick="pick('nipponindiaim.com')">nipponindiaim.com</span>
+      <span class="eg-pill" onclick="pick('tatamutualfund.com')">tatamutualfund.com</span>
+      <span class="eg-pill" onclick="pick('miraeam.com')">miraeam.com</span>
+      <span class="eg-pill" onclick="pick('amfiindia.com')">amfiindia.com</span>
+      <!-- Global Bodies -->
+      <span class="eg-pill" onclick="pick('bis.org')">bis.org</span>
+      <span class="eg-pill" onclick="pick('imf.org')">imf.org</span>
+      <span class="eg-pill" onclick="pick('fsb.org')">fsb.org</span>
+      <span class="eg-pill" onclick="pick('swift.com')">swift.com</span>
+      <span class="eg-pill" onclick="pick('iosco.org')">iosco.org</span>
+      <span class="eg-pill" onclick="pick('fatf-gafi.org')">fatf-gafi.org</span>
+    </div>
+  </div>
+
+  <div id="status"></div>
+  <div id="results"></div>
+</main>
+
+<footer>For Educational Purposes Only &nbsp;·&nbsp; <a href="algo-ratings.html" style="color:var(--rule2);text-decoration:underline;text-underline-offset:3px;font-family:'IBM Plex Mono',monospace">Algorithm Ratings →</a></footer>
+
+<script>
+const API_BASE = "https://pqc-3p1d.onrender.com";
+
+const ALGO_PLAIN = {
+  "X25519+ML-KEM-768":    "Uses a hybrid lock combining a classical key and a new quantum-resistant key. Even a quantum computer cannot break this.",
+  "SecP256r1+ML-KEM-768": "Hybrid key exchange: classical P-256 plus quantum-safe ML-KEM. Well protected against quantum attacks.",
+  "X25519+ML-KEM-1024":   "Strongest hybrid key exchange available. Fully future-proof against quantum computers.",
+  "X25519+Kyber768":      "An earlier draft of the quantum-safe hybrid standard. Good, but not the finalised version.",
+  "X25519":               "Fast and secure today, but a quantum computer running Shor's algorithm could break it.",
+  "ECDH-P256":            "The standard key exchange used by most websites today. A quantum computer could crack it.",
+  "ECDH-P384":            "Stronger elliptic curve — still broken by a quantum computer. Better classical security, same quantum problem.",
+  "ECDH-P521":            "Largest standard elliptic curve. Still vulnerable to quantum attacks.",
+  "RSA-2048":             "The algorithm most of the internet was built on. A quantum computer would break 2048-bit RSA in hours.",
+  "RSA-3072":             "Larger RSA key — harder for classical computers, but still solvable by a quantum computer.",
+  "RSA-4096":             "Very large RSA key. Still quantum-vulnerable.",
+  "ML-KEM-768":           "The new NIST standard for quantum-safe key exchange (FIPS 203). Fully resistant to quantum attacks.",
+  "ML-KEM-1024":          "Highest security quantum-safe key exchange. NIST standard.",
+  "AES-256-GCM":          "Gold standard for encrypting data. 256-bit keys are large enough to resist quantum attacks.",
+  "AES-128-GCM":          "Good encryption, but 128-bit keys are weakened by quantum — effectively 64-bit security post-quantum.",
+  "AES-256-CBC":          "Strong encryption but an older mode. Secure, though GCM is preferred.",
+  "AES-128-CBC":          "Older, weaker mode. 128-bit key is also weakened by quantum.",
+  "ChaCha20-Poly1305":    "Modern cipher with 256-bit key. Quantum-resistant for practical purposes.",
+  "3DES":                 "Very old — Triple DES. Officially deprecated. Should not be in use.",
+  "RC4":                  "Broken cipher. Should never be used.",
+  "ECDSA-P256":           "Signs this certificate using elliptic curve cryptography. A quantum computer running Shor's algorithm could forge this signature and impersonate the server.",
+  "ECDSA-P384":           "Stronger elliptic curve signature. Same quantum vulnerability as P-256, just needs a slightly larger quantum computer.",
+  "RSA-PKCS1-2048":       "RSA-2048 signature — used to sign this certificate or a CA certificate in the chain. A quantum computer running Shor's algorithm could factor the underlying key and forge signatures, breaking the entire trust chain below it.",
+  "RSA-PKCS1-3072":       "RSA-3072 signature. Stronger classically than 2048-bit, but still broken by a quantum computer.",
+  "RSA-PKCS1-4096":       "RSA-4096 signature — typically used by root CAs for their long-lived keys. Quantum-vulnerable, but requires a larger quantum computer to break than 2048-bit.",
+  "RSA-PSS-2048":         "RSA-PSS is a more modern RSA padding scheme. The underlying key is still quantum-vulnerable.",
+  "Ed25519":              "Modern elliptic curve signature, very efficient. Still quantum-vulnerable via Shor's algorithm.",
+  "ML-DSA-44":            "New quantum-safe signature standard (FIPS 204). Fully resistant.",
+  "ML-DSA-65":            "Quantum-safe signature, medium security level. NIST standard.",
+  "ML-DSA-87":            "Highest security quantum-safe signature. NIST standard.",
+  "SHA-256":              "Hashing algorithm. Grover's algorithm halves its effective security — still safe for now, SHA-384 preferred.",
+  "SHA-384":              "Stronger hash. 192-bit post-quantum security. Recommended.",
+  "SHA-512":              "Strongest standard hash. Fully quantum-resistant.",
+  "SHA-1":                "Old hash — already broken by classical computers. Should not appear in signatures.",
+  "MD5":                  "Completely broken hash. Should never appear.",
+  "TLS-1.3":              "Latest and most secure HTTPS protocol version.",
+  "TLS-1.2":              "Older HTTPS protocol. Still widely used but cannot use quantum-safe key exchange.",
+  "TLS-1.1":              "Deprecated. Should not be accepted by modern servers.",
+  "TLS-1.0":              "Very old. Deprecated.",
+};
+
+const ALGO_HOW_QUANTUM = {
+  "X25519":         "Shor's Algorithm: a quantum computer solves the elliptic curve discrete logarithm in polynomial time instead of exponential time.",
+  "ECDH-P256":      "Shor's Algorithm: solves the discrete logarithm on the P-256 elliptic curve. A mature quantum computer could do it in hours.",
+  "ECDH-P384":      "Shor's Algorithm: same attack, just needs a slightly larger quantum processor.",
+  "ECDH-P521":      "Shor's Algorithm: needs more qubits than P-256, but still broken by a sufficiently powerful quantum computer.",
+  "RSA-2048":       "Shor's Algorithm: factors the large numbers RSA security depends on. A CRQC could do it in hours.",
+  "RSA-3072":       "Shor's Algorithm: same factoring attack. A slightly larger quantum computer is needed.",
+  "RSA-4096":       "Shor's Algorithm: still broken by quantum, just requires more qubits.",
+  "ECDSA-P256":     "Shor's Algorithm: the same math that breaks ECDH key exchange also breaks ECDSA signatures. An attacker could forge the website's certificate.",
+  "ECDSA-P384":     "Shor's Algorithm: same signature forgery attack on a larger curve.",
+  "RSA-PKCS1-2048": "Shor's Algorithm: RSA security depends on the difficulty of factoring large numbers. A 2048-bit RSA key could be broken in hours on a mature CRQC.",
+  "RSA-PKCS1-3072": "Shor's Algorithm: same factoring attack as RSA-2048. The larger key needs a bigger quantum computer.",
+  "RSA-PKCS1-4096": "Shor's Algorithm: same factoring attack. 4096-bit RSA is commonly used by root CAs because of its long validity period — but still quantum-vulnerable.",
+  "RSA-PSS-2048":   "Shor's Algorithm: PSS padding doesn't help against quantum factoring of the RSA modulus.",
+  "Ed25519":        "Shor's Algorithm: Ed25519 is based on elliptic curves, susceptible to the same attack.",
+  "AES-128-GCM":    "Grover's Algorithm: quantum search halves effective key length from 128 bits to 64 bits.",
+  "AES-128-CBC":    "Grover's Algorithm: 64-bit effective post-quantum security. The mode (CBC) is also outdated.",
+  "SHA-256":        "Grover's Algorithm: halves effective security from 256 to 128 bits. Still considered safe but SHA-384 provides more headroom.",
+  "SHA-1":          "Already broken classically — collision attacks exist without needing a quantum computer.",
+  "TLS-1.2":        "Protocol limitation: TLS 1.2's architecture cannot negotiate quantum-safe key exchange groups.",
+  "TLS-1.1":        "Protocol obsolete — deprecated by IETF in 2021.",
+  "TLS-1.0":        "Protocol obsolete — deprecated by IETF in 2021.",
+};
+
+// Migration advice by category — cert signatures are not actionable today
+// (no browser or CA supports ML-DSA yet, expected 2026-2027)
+const CERT_SIG_ECOSYSTEM_NOTE =
+  "No action needed right now — no certificate authority currently issues quantum-safe certificates, " +
+  "and no browser validates them yet. This is a known gap across the entire internet. " +
+  "Watch for CA support expected in 2026–2027.";
+
+const ALGO_WHAT_TO_DO = {
+  // ── Key Exchange — actionable today ──────────────────────────────────────
+  "X25519":              "Ask your hosting provider or CDN to enable X25519+ML-KEM-768 hybrid key exchange. This is the currently recommended transition step — it combines the classical algorithm with a quantum-safe one, so you are protected even if either has a flaw. Cloudflare, Google, and AWS already support this.",
+  "ECDH-P256":           "Configure the server to offer X25519+ML-KEM-768 as the preferred key exchange group. Most modern web servers (Nginx, Apache, Caddy) support this via a simple config change.",
+  "ECDH-P384":           "Upgrade to X25519+ML-KEM-768 hybrid key exchange. P-384 offers no advantage over P-256 against quantum attacks — both are equally vulnerable to Shor's algorithm.",
+  "ECDH-P521":           "Upgrade to X25519+ML-KEM-768 hybrid. The larger curve size does not help against quantum attacks.",
+  "X25519+Kyber768":     "This is the pre-standard version (IANA 0x6399) and is being actively retired — the IETF draft explicitly obsoletes it and marks it Deprecated. Upgrade to X25519+ML-KEM-768 (IANA 0x11ec), the current version now deployed by Cloudflare, Google, and Apple.",
+  "DH-2048":             "Disable DHE cipher suites entirely and switch to ECDHE or ML-KEM hybrid key exchange with TLS 1.3.",
+  "DH-4096":             "Disable DHE cipher suites and switch to TLS 1.3 with X25519+ML-KEM-768 hybrid key exchange.",
+  "RSA":                 "If this is a key exchange cipher (RSA key transport), disable it and enable TLS 1.3 with forward secrecy.",
+
+  // ── Symmetric — mostly actionable ────────────────────────────────────────
+  "AES-128-CBC":         "Upgrade to AES-256-GCM — the 256-bit key is large enough to resist Grover's algorithm, and GCM mode adds authenticated encryption.",
+  "AES-128-GCM":         "Upgrade to AES-256-GCM or ChaCha20-Poly1305. Both are quantum-safe at 256-bit key sizes and are already widely supported.",
+  "AES-128-ECB":         "Replace immediately — ECB mode leaks data patterns regardless of quantum computers. Switch to AES-256-GCM.",
+  "AES-256-CBC":         "Switch to AES-256-GCM. The key is the right size but CBC mode lacks authenticated encryption — GCM is the safe default.",
+  "AES-256-CTR":         "Switch to AES-256-GCM. CTR mode needs a separate authentication tag; GCM provides both in one.",
+  "DES":                 "Disable immediately. DES is broken by classical computers — quantum is not even the concern here.",
+  "3DES":                "Disable immediately. Triple DES was officially deprecated in 2023 and is vulnerable to classical attacks.",
+  "RC4":                 "Disable immediately. RC4 is completely broken regardless of quantum computers.",
+  "Camellia-128":        "Switch to AES-256-GCM. Camellia-128 is technically sound but rarely hardware-accelerated and has a 128-bit key.",
+  "Camellia-256":        "AES-256-GCM is preferable for broader support, though Camellia-256 is not broken.",
+  "SM4-CBC":             "Switch to SM4-GCM for authenticated encryption, or AES-256-GCM if not operating under Chinese compliance requirements.",
+
+  // ── Hash — partially actionable ──────────────────────────────────────────
+  "SHA-1":               "Replace immediately — SHA-1 is broken by classical computers, independent of quantum threats.",
+  "MD5":                 "Replace immediately — MD5 has been broken since 2004.",
+  "SHA-224":             "Upgrade to SHA-384 for any new work. SHA-224 has insufficient output length against Grover's algorithm.",
+  "SHA-256":             "Acceptable for now. For long-lived data or certificates that need to survive beyond 2030, prefer SHA-384.",
+  "SHA3-256":            "Acceptable for now. Prefer SHA3-384 for high-assurance applications.",
+  "SM3":                 "Acceptable under Chinese compliance requirements. For international systems, SHA-384 is preferred.",
+
+  // ── Protocol — actionable today ───────────────────────────────────────────
+  "TLS-1.0":             "Disable TLS 1.0 immediately on the web server. It has been retired since 2021 and is vulnerable to classical attacks. Enable TLS 1.3.",
+  "TLS-1.1":             "Disable TLS 1.1 immediately. Retired since 2021. Enable TLS 1.3.",
+  "TLS-1.2":             "Enable TLS 1.3 on the server and configure X25519+ML-KEM-768 key exchange groups. TLS 1.2 can remain as a fallback for legacy clients but should not be the primary version.",
+  "SSL-2.0":             "Disable immediately. SSL 2.0 is completely broken and should not exist on any server.",
+  "SSL-3.0":             "Disable immediately. SSL 3.0 is completely broken (POODLE attack, 2014).",
+
+  // ── Safe algorithms — no action ───────────────────────────────────────────
+  "AES-256-GCM":         "Nothing to do — AES-256-GCM is quantum-safe and the current gold standard for symmetric encryption.",
+  "ChaCha20-Poly1305":   "Nothing to do — ChaCha20-Poly1305 is quantum-safe and fully current.",
+  "AES-192-GCM":         "Nothing to do — AES-192-GCM is quantum-safe.",
+  "SHA-384":             "Nothing to do — SHA-384 is quantum-resistant.",
+  "SHA-512":             "Nothing to do — SHA-512 is quantum-resistant.",
+  "SHA3-384":            "Nothing to do — SHA3-384 is quantum-resistant.",
+  "SHA3-512":            "Nothing to do — SHA3-512 is quantum-resistant.",
+  "ML-KEM-768":          "Nothing to do — ML-KEM-768 is the current NIST standard for quantum-safe key exchange.",
+  "ML-KEM-1024":         "Nothing to do — ML-KEM-1024 is the highest-security quantum-safe key exchange.",
+  "X25519+ML-KEM-768":   "Nothing to do — X25519+ML-KEM-768 is the widely deployed hybrid and the practical standard for the transition period. The IETF draft (draft-ietf-tls-ecdhe-mlkem) is not yet a finalised RFC, but Google, Cloudflare, and Apple already use it in production.",
+  "X25519+ML-KEM-1024":  "Nothing to do — X25519+ML-KEM-1024 is the highest-security hybrid, suited for sensitive applications. Part of the same IETF draft as X25519+ML-KEM-768, not yet a finalised RFC.",
+  "SecP256r1+ML-KEM-768":"Nothing to do — SecP256r1+ML-KEM-768 is the FIPS-compliant hybrid variant (both components are FIPS-approved). Part of the same IETF draft, not yet finalised.",
+  "TLS-1.3":             "__TLS13__",
+};
+
+// Paper theme threat colors — desaturated, ink-like
+function threatStyle(threat) {
+  const map = {
+    CRITICAL: { color:"#9b1c1c", bg:"#fef2f2",  border:"#fca5a5",  emoji:"🔴", label:"Critical" },
+    HIGH:     { color:"#9a3412", bg:"#fff7ed",   border:"#fdba74",  emoji:"🟠", label:"High Risk" },
+    MEDIUM:   { color:"#92400e", bg:"#fffbeb",   border:"#fcd34d",  emoji:"🟡", label:"Medium" },
+    LOW:      { color:"#14532d", bg:"#f0fdf4",   border:"#86efac",  emoji:"🟢", label:"Low Risk" },
+    NONE:     { color:"#14532d", bg:"#f0fdf4",   border:"#86efac",  emoji:"🟢", label:"Safe" },
+    UNKNOWN:  { color:"#7a6f60", bg:"#faf7f2",   border:"#c8bfaa",  emoji:"⚪", label:"Unknown" },
+  };
+  return map[threat] || map.UNKNOWN;
+}
+
+function verdictFor(score, hndl, imp, findings) {
+  const fs = findings || [];
+
+  // Quantum-safe cert: leaf uses ML-DSA / SLH-DSA / FN-DSA
+  const PQC_SIG_PREFIXES = ["ML-DSA","SLH-DSA","FN-DSA"];
+  const certPQC = fs.some(f =>
+    f.ftype === "sig_key" && f.context && f.context.includes("Leaf") &&
+    PQC_SIG_PREFIXES.some(p => f.algo && f.algo.startsWith(p))
+  );
+
+  // Classically weak today (not just quantum-vulnerable — actually broken or
+  // deprecated by classical standards). Drives Grade C vs Grade B.
+  const CLASSICALLY_WEAK = new Set([
+    "SHA-1","MD5","RC4","3DES","DES","SSL-2.0","SSL-3.0","TLS-1.0","TLS-1.1",
+    "RSA-512","RSA-1024","DH-512","DH-1024","ECDH-P192","ECDSA-P192","DSA-1024",
+  ]);
+  const certClassicallyWeak = fs.some(f =>
+    f.category === "Signature" || f.category === "Hash" || f.category === "Symmetric"
+    ? CLASSICALLY_WEAK.has(f.algo) && f.threat === "CRITICAL"
+    : false
+  );
+
+  // Broken / withdrawn algorithms present
+  const hasBroken = fs.some(f => f.threat === "CRITICAL" &&
+    (f.category === "Symmetric" || f.category === "Hash" || f.category === "Protocol"));
+
+  // A+: quantum-safe KEX + quantum-safe cert
+  if (!hndl && certPQC)
+    return { grade:"A+", color:"#14532d", bg:"#f0fdf4", border:"#86efac",
+      phrase:"Quantum-safe, end to end",
+      plain:"Both the key exchange and the certificate use quantum-safe algorithms. This connection is protected against current threats and future quantum computers." };
+
+  // A: quantum-safe KEX, classical cert
+  if (!hndl)
+    return { grade:"A", color:"#1e5f3a", bg:"#f0fdf4", border:"#86efac",
+      phrase:"No harvest risk, impersonation risk remains",
+      plain:"Traffic recorded today cannot be decrypted by future quantum computers. However, the certificate still uses classical algorithms — once quantum computers arrive, an attacker could forge it and impersonate this site." };
+
+  // B: classical KEX, cert is quantum-vulnerable but fine by today's standards
+  // This is the normal state of the internet in 2026 — RSA-2048/ECDSA certs,
+  // no SHA-1, no broken ciphers. The portfolio_score naive average is NOT used
+  // here because TLS-Downgrade and X25519 both have low ratings that unfairly
+  // drag the score below 3, producing a misleading Grade C.
+  if (hndl && !certClassicallyWeak && !hasBroken)
+    return { grade:"B", color:"#92400e", bg:"#fffbeb", border:"#fcd34d",
+      phrase:"Harvest risk active, certificates vulnerable in quantum era",
+      plain:"Encrypted traffic from today could be stored and decrypted once quantum computers arrive. The certificate uses classical algorithms — it is fine by today\'s standards but will need upgrading when quantum-safe certificates become available from certificate authorities." };
+
+  // C: classical KEX + cert or cipher classically weak today
+  if (hndl && (certClassicallyWeak || hasBroken))
+    return { grade:"C", color:"#9a3412", bg:"#fff7ed", border:"#fdba74",
+      phrase:"Harvest risk active, certificate weak today",
+      plain:"Encrypted traffic can be harvested now and decrypted later. The certificate or cipher also uses algorithms that are weak by today\'s classical standards — this is an immediate concern, independent of quantum computers." };
+
+  // D: no HNDL risk but deprecated/weak algorithms present
+  if (hasBroken || certClassicallyWeak)
+    return { grade:"D", color:"#7c2d12", bg:"#fef2f2", border:"#fca5a5",
+      phrase:"Weak encryption, multiple vulnerabilities",
+      plain:"This site uses outdated encryption with multiple weaknesses — a full security upgrade is needed, independent of quantum computers." };
+
+  // F: broken / withdrawn
+  return { grade:"F", color:"#9b1c1c", bg:"#fef2f2", border:"#fca5a5",
+    phrase:"Broken — deprecated or withdrawn algorithms",
+    plain:"This site uses encryption algorithms that have been officially withdrawn or are considered broken. Connections are not secure." };
+}
+
+// Domains confirmed to support X25519+ML-KEM-768 hybrid KEX.
+// Cloudflare deploys it by default for all customers (since late 2023).
+// Google/YouTube run it on their own infrastructure.
+// This set grows dynamically as you scan — any domain that comes back
+// with hndl_risk=false (quantum-safe KEX) gets added automatically.
+const PQC_DOMAINS = new Set([
+  // Google infrastructure
+  'google.com', 'youtube.com',
+  // Cloudflare (and Cloudflare-hosted fintechs)
+  'cloudflare.com',
+  'groww.in', 'zerodha.com', 'angelone.in', 'indmoney.com',
+  'cdslindia.com', 'swissre.com', 'licindia.in',
+  'fsb.org', 'iosco.org',
+  // Verified by scan — add more as you discover them
+]);
+
+function markPqcPills() {
+  document.querySelectorAll('.eg-pill').forEach(pill => {
+    // extract domain from onclick="pick('domain')"
+    const m = pill.getAttribute('onclick')?.match(/pick\('([^']+)'\)/);
+    if (!m) return;
+    if (PQC_DOMAINS.has(m[1])) {
+      pill.classList.add('eg-pill--pqc');
+    } else {
+      pill.classList.remove('eg-pill--pqc');
+    }
+  });
+}
+
+function pick(d) {
+  document.getElementById("domain-input").value = d;
+  document.getElementById("domain-input").focus();
+}
+
+// Run on load
+document.addEventListener('DOMContentLoaded', markPqcPills);
+
+function setStatus(msg, spin=false) {
+  document.getElementById("status").innerHTML = (spin ? `<span class="spinner"></span>` : "") + msg;
+}
+
+async function scan() {
+  const raw = document.getElementById("domain-input").value.trim();
+  if (!raw) return;
+  let domain = raw.replace(/^https?:\/\//,"").split("/")[0];
+  let port = 443;
+  if (domain.includes(":")) { const p=domain.split(":"); domain=p[0]; port=parseInt(p[1])||443; }
+
+  document.getElementById("scan-btn").disabled = true;
+  document.getElementById("results").innerHTML = "";
+  setStatus(`Connecting to <em>${domain}</em> — this may take up to 30 seconds if the server was sleeping…`, true);
+
+  try {
+    const res  = await fetch(`${API_BASE}/scan?domain=${encodeURIComponent(domain)}&port=${port}`);
+    const data = await res.json();
+    if (data.error) {
+      setStatus("");
+      document.getElementById("results").innerHTML = `<div class="error-box">✕ ${data.error}</div>`;
+      return;
+    }
+    setStatus(`Inspection complete — ${domain}`);
+    render(data, domain, port);
+  } catch(e) {
+    setStatus("");
+    document.getElementById("results").innerHTML =
+      `<div class="error-box">✕ Could not reach the scanner API.<br><br>
+      <strong>If this is your first scan in a while:</strong> the free server sleeps after 15 minutes of inactivity.
+      Visit <a href="${API_BASE}/health" target="_blank">${API_BASE}/health</a> in a new tab to wake it up, wait 10 seconds, then try again.<br><br>
+      Error: ${e.message}</div>`;
+  } finally {
+    document.getElementById("scan-btn").disabled = false;
+  }
+}
+
+function render(data, domain, port) {
+  const { findings, portfolio_score, hndl_risk, impersonation_risk,
+          impersonation_count, meta } = data;
+
+  // Use actual hndl_risk for grading — the probe result is what we measured.
+  // CDN browser PQC is inferred from CDN identity, not confirmed by the probe.
+  // A prominent CDN note in the UI explains the context.
+  const effectiveHndl = hndl_risk;
+
+  // Dynamically learn which domains are PQC-capable
+  if (!effectiveHndl) {
+    PQC_DOMAINS.add(domain);
+    markPqcPills();
+  }
+  const chainDepth = meta.cert_chain_depth || 1;
+  const chainBreakdown = (meta.cert_chain || []).map(c =>
+    `${c.role === 'leaf' ? "🌿 <span class='jargon' data-tip='Leaf certificate'>Leaf certificate</span>" : c.role === 'intermediate' ? "🔗 <span class='jargon' data-tip='Intermediate CA'>Intermediate CA</span>" : "🏛 <span class='jargon' data-tip='Root CA'>Root CA</span>"}: ${c.subject || 'N/A'}`
+  ).join("<br>");
+  const v = verdictFor(portfolio_score, effectiveHndl, impersonation_risk, findings);
+  let html = "";
+
+  // CDN browser note for verdict
+  const cdnBrowserNote = (meta.cdn_provider && meta.browser_pqc)
+    ? `<div style="margin-top:10px;padding:10px 14px;background:rgba(20,83,45,0.08);border-radius:2px;border-left:3px solid #14532d;font-size:12.5px;line-height:1.65">
+        🌐 <strong>CDN detected: ${meta.cdn_provider}.</strong>
+        This scanner could not replicate a browser TLS fingerprint precisely enough to negotiate PQC with this CDN —
+        the grade reflects what non-browser clients (API systems, monitoring tools) see.
+        Browser clients typically receive <strong>X25519+ML-KEM-768</strong> from this CDN.
+        Verify via browser DevTools → Security tab.
+       </div>`
+    : "";
+
+  // Verdict
+  html += `
+  <div class="verdict-card fade-up" style="background:${v.bg};border-color:${v.border};border-left-color:${v.color}">
+    <div class="verdict-grade" style="color:${v.color}">${v.grade}</div>
+    <div>
+      <div class="verdict-phrase" style="color:${v.color}">${v.phrase}</div>
+      <div class="verdict-domain">${domain}:${port} · <span class="jargon" data-tip-tls="1">${meta.tls_version||"?"}</span> · IP: ${meta.ip||"?"}</div>
+      <div class="verdict-plain">${v.plain}</div>
+      ${cdnBrowserNote}
+    </div>
+  </div>`;
+
+  // Section 1
+  const kexFindings = findings.filter(f => f.category==="Key Exchange" || f.category==="Protocol");
+  html += `
+  <div class="section fade-up">
+    <div class="margin-anchor">
+      <div class="margin-roman">I</div>
+      <svg class="margin-illo" width="90" height="90" viewBox="0 0 90 90" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- hacker figure harvesting data packets -->
+  <!-- hat -->
+  <ellipse cx="45" cy="22" rx="16" ry="4" fill="#1a1714"/>
+  <rect x="33" y="12" width="24" height="12" rx="4" fill="#1a1714"/>
+  <!-- head -->
+  <circle cx="45" cy="30" r="8" fill="#c8bfaa"/>
+  <!-- eyes - mask -->
+  <rect x="37" y="27" width="16" height="5" rx="2.5" fill="#1a1714"/>
+  <circle cx="40" cy="29" r="2" fill="#f5f0e8"/>
+  <circle cx="50" cy="29" r="2" fill="#f5f0e8"/>
+  <!-- body -->
+  <rect x="36" y="38" width="18" height="20" rx="3" fill="#3d3530"/>
+  <!-- arms reaching out with bucket -->
+  <line x1="36" y1="44" x2="22" y2="52" stroke="#3d3530" stroke-width="4" stroke-linecap="round"/>
+  <line x1="54" y1="44" x2="68" y2="52" stroke="#3d3530" stroke-width="4" stroke-linecap="round"/>
+  <!-- bucket on left -->
+  <path d="M14 52 L18 66 H26 L30 52 Z" fill="#c8bfaa" stroke="#1a1714" stroke-width="1.5"/>
+  <line x1="14" y1="52" x2="30" y2="52" stroke="#1a1714" stroke-width="1.5"/>
+  <!-- data packets falling into bucket -->
+  <rect x="17" y="42" width="7" height="5" rx="1" fill="#9a3412" transform="rotate(-10 20 44)"/>
+  <rect x="22" y="35" width="6" height="4" rx="1" fill="#9a3412" transform="rotate(5 25 37)"/>
+  <rect x="27" y="44" width="5" height="5" rx="1" fill="#9a3412" transform="rotate(-5 29 46)"/>
+  <!-- legs -->
+  <rect x="38" y="57" width="6" height="14" rx="2" fill="#3d3530"/>
+  <rect x="46" y="57" width="6" height="14" rx="2" fill="#3d3530"/>
+  <!-- small lock icons floating -->
+  <text x="58" y="40" font-size="10" fill="#c8bfaa">🔒</text>
+  <text x="62" y="28" font-size="8" fill="#c8bfaa">⚡</text>
+</svg>
+    </div>
+    <div class="section-header">
+      <div class="section-numeral section-numeral-inline">I</div>
+      <div>
+        <div class="section-title">Session Privacy — Key Exchange</div>
+        <div class="section-desc">
+          When you open a website, your browser and the server agree on a secret key to encrypt your session.
+          This is the <strong>key exchange</strong>. It determines whether traffic recorded <em>today</em>
+          can be decrypted by future quantum computers — the "Harvest Now, Decrypt Later" threat.
+        </div>
+      </div>
+    </div>
+    ${meta.kex_probe ? `<div class="info-note">ℹ️ ${meta.kex_probe}</div>` : ""}
+    ${meta.cdn_provider && meta.browser_pqc ? `
+    <div class="info-note" style="border-left-color:#14532d;background:#f0fdf4">
+      🌐 <strong>CDN detected: ${meta.cdn_provider}.</strong>
+      This scanner could not replicate a browser TLS fingerprint precisely enough to negotiate PQC —
+      X25519 is what non-browser clients see.
+      Browser clients typically receive <strong>X25519+ML-KEM-768</strong> from this CDN.
+      Verify via browser DevTools → Security tab.
+    </div>` : (meta.cdn_provider ? `
+    <div class="info-note" style="border-left-color:#92400e;background:#fffbeb">
+      🌐 <strong>CDN detected: ${meta.cdn_provider}.</strong> ${meta.browser_pqc_note || ""}
+    </div>` : "")}
+    ${kexFindings.map(f => findingCard(f, null, effectiveHndl)).join("")}
+    ${categorySummary("kex", kexFindings, effectiveHndl, meta)}
+  </div>`;
+
+  // Section 2
+  const certFindings = findings.filter(f => f.category==="Signature" || f.category==="Hash");
+  html += `
+  <div class="section fade-up">
+    <div class="margin-anchor">
+      <div class="margin-roman">II</div>
+      <svg class="margin-illo" width="90" height="90" viewBox="0 0 90 90" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- left figure: user -->
+  <circle cx="12" cy="22" r="7" fill="#c8bfaa"/>
+  <rect x="6" y="30" width="12" height="16" rx="2" fill="#5a7a5a"/>
+  <line x1="6" y1="36" x2="0" y2="44" stroke="#5a7a5a" stroke-width="3" stroke-linecap="round"/>
+  <line x1="18" y1="36" x2="24" y2="44" stroke="#5a7a5a" stroke-width="3" stroke-linecap="round"/>
+  <rect x="7" y="46" width="4" height="12" rx="1.5" fill="#5a7a5a"/>
+  <rect x="13" y="46" width="4" height="12" rx="1.5" fill="#5a7a5a"/>
+
+  <!-- right figure: server/website -->
+  <rect x="72" y="14" width="16" height="22" rx="2" fill="#c8bfaa" stroke="#1a1714" stroke-width="1.5"/>
+  <rect x="75" y="17" width="10" height="8" rx="1" fill="#1a1714" opacity=".2"/>
+  <circle cx="80" cy="30" r="2" fill="#5a7a5a"/>
+  <rect x="74" y="36" width="12" height="4" rx="1" fill="#1a1714" opacity=".15"/>
+
+  <!-- hacker in middle - intercepting -->
+  <ellipse cx="45" cy="17" rx="12" ry="3" fill="#1a1714"/>
+  <rect x="37" y="10" width="16" height="10" rx="3" fill="#1a1714"/>
+  <circle cx="45" cy="26" r="7" fill="#c8bfaa"/>
+  <rect x="38" y="23" width="14" height="4" rx="2" fill="#1a1714"/>
+  <circle cx="41" cy="25" r="1.5" fill="#f5f0e8"/>
+  <circle cx="49" cy="25" r="1.5" fill="#f5f0e8"/>
+  <rect x="38" y="33" width="14" height="16" rx="2" fill="#3d3530"/>
+  <rect x="39" y="49" width="4" height="11" rx="1.5" fill="#3d3530"/>
+  <rect x="45" y="49" width="4" height="11" rx="1.5" fill="#3d3530"/>
+  <!-- hands intercepting the signal line -->
+  <line x1="38" y1="39" x2="28" y2="45" stroke="#3d3530" stroke-width="3.5" stroke-linecap="round"/>
+  <line x1="52" y1="39" x2="62" y2="45" stroke="#3d3530" stroke-width="3.5" stroke-linecap="round"/>
+
+  <!-- connection lines being intercepted -->
+  <line x1="24" y1="30" x2="36" y2="30" stroke="#c8bfaa" stroke-width="1.5" stroke-dasharray="3 2"/>
+  <line x1="54" y1="30" x2="70" y2="25" stroke="#c8bfaa" stroke-width="1.5" stroke-dasharray="3 2"/>
+
+  <!-- fake cert badge -->
+  <rect x="56" y="55" width="20" height="14" rx="2" fill="#fffbeb" stroke="#fdba74" stroke-width="1.5"/>
+  <text x="61" y="65" font-size="8" fill="#92400e">FAKE</text>
+</svg>
+    </div>
+    <div class="section-header">
+      <div class="section-numeral section-numeral-inline">II</div>
+      <div>
+        <div class="section-title">Identity — Certificate & Signature</div>
+        <div class="section-desc">
+          A certificate is the website's digital passport — it proves you're talking to the real server, not an impostor.
+          A trusted authority signs this certificate. Breaking the signature would let an attacker
+          <strong>impersonate the website</strong>. Unlike key exchange, this cannot be attacked retroactively —
+          only when a quantum computer is actively running.
+        </div>
+      </div>
+    </div>
+    ${meta.certificate ? certBlock(meta.certificate, meta.cert_chain) : ""}
+    ${certFindings.map(f => findingCard(f, meta.cert_chain, hndl_risk)).join("")}
+    ${categorySummary("cert", certFindings, effectiveHndl, meta)}
+  </div>`;
+
+  // Section 3
+  const symFindings = findings.filter(f => f.category==="Symmetric");
+  if (symFindings.length) {
+    html += `
+    <div class="section fade-up">
+      <div class="margin-anchor">
+        <div class="margin-roman">III</div>
+        <svg class="margin-illo" width="90" height="82" viewBox="0 0 90 82" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- large AES block cipher concept: grid of cells being encrypted -->
+  <!-- plain text grid -->
+  <rect x="8" y="10" width="28" height="28" rx="2" fill="#c8bfaa" stroke="#1a1714" stroke-width="1"/>
+  <line x1="8" y1="19" x2="36" y2="19" stroke="#1a1714" stroke-width=".8" opacity=".4"/>
+  <line x1="8" y1="28" x2="36" y2="28" stroke="#1a1714" stroke-width=".8" opacity=".4"/>
+  <line x1="17" y1="10" x2="17" y2="38" stroke="#1a1714" stroke-width=".8" opacity=".4"/>
+  <line x1="27" y1="10" x2="27" y2="38" stroke="#1a1714" stroke-width=".8" opacity=".4"/>
+  <text x="10" y="22" font-size="6" fill="#1a1714" opacity=".5">AB</text>
+  <text x="19" y="22" font-size="6" fill="#1a1714" opacity=".5">CD</text>
+  <text x="10" y="35" font-size="6" fill="#1a1714" opacity=".5">EF</text>
+  <text x="19" y="35" font-size="6" fill="#1a1714" opacity=".5">GH</text>
+  <text x="11" y="16" font-size="5" fill="#7a6f60">DATA</text>
+
+  <!-- arrow -->
+  <line x1="40" y1="24" x2="52" y2="24" stroke="#1a1714" stroke-width="2" stroke-linecap="round"/>
+  <polyline points="49,20 53,24 49,28" stroke="#1a1714" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- key above arrow -->
+  <text x="42" y="20" font-size="10" fill="#92400e">🔑</text>
+
+  <!-- encrypted grid -->
+  <rect x="55" y="10" width="28" height="28" rx="2" fill="#3d3530" stroke="#1a1714" stroke-width="1"/>
+  <line x1="55" y1="19" x2="83" y2="19" stroke="#c8bfaa" stroke-width=".8" opacity=".3"/>
+  <line x1="55" y1="28" x2="83" y2="28" stroke="#c8bfaa" stroke-width=".8" opacity=".3"/>
+  <line x1="64" y1="10" x2="64" y2="38" stroke="#c8bfaa" stroke-width=".8" opacity=".3"/>
+  <line x1="74" y1="10" x2="74" y2="38" stroke="#c8bfaa" stroke-width=".8" opacity=".3"/>
+  <text x="57" y="22" font-size="6" fill="#c8bfaa" opacity=".7">╬█</text>
+  <text x="66" y="22" font-size="6" fill="#c8bfaa" opacity=".7">▓░</text>
+  <text x="57" y="34" font-size="6" fill="#c8bfaa" opacity=".7">▒╗</text>
+  <text x="66" y="34" font-size="6" fill="#c8bfaa" opacity=".7">░╔</text>
+  <text x="57" y="16" font-size="5" fill="#c8bfaa" opacity=".6">ENCR</text>
+
+  <!-- Grover annotation -->
+  <text x="10" y="54" font-size="9" fill="#7a6f60" font-family="serif" font-style="italic">128-bit:</text>
+  <rect x="10" y="57" width="28" height="5" rx="1" fill="#fdba74" opacity=".6"/>
+  <text x="42" y="62" font-size="8" fill="#7a6f60">→</text>
+  <text x="10" y="70" font-size="9" fill="#7a6f60" font-family="serif" font-style="italic">256-bit:</text>
+  <rect x="10" y="73" width="64" height="5" rx="1" fill="#86efac" opacity=".7"/>
+</svg>
+      </div>
+      <div class="section-header">
+        <div class="section-numeral section-numeral-inline">III</div>
+        <div>
+          <div class="section-title">Data Encryption — Symmetric Cipher</div>
+          <div class="section-desc">
+            After the key is agreed, all data is encrypted using a symmetric cipher (like AES).
+            Quantum computers use Grover's algorithm to weaken these — but 256-bit keys have enough headroom to stay safe.
+          </div>
+        </div>
+      </div>
+      ${symFindings.map(f => findingCard(f, null, effectiveHndl)).join("")}
+      ${categorySummary("sym", symFindings, effectiveHndl, meta)}
+    </div>`;
+  }
+
+  // Timeline
+  html += `<hr class="divider-heavy">
+  <div class="section fade-up">
+    <div class="section-header">
+      <div class="section-numeral" style="font-size:22px">⏱</div>
+      <div>
+        <div class="section-title">When does the danger actually kick in?</div>
+        <div class="section-desc">Key exchange and certificate risks have different timelines.</div>
+      </div>
+    </div>`;
+
+  if (effectiveHndl) {
+    html += `
+    <div class="action-card" style="border-left-color:#9a3412;background:#fff7ed">
+      <div class="action-title" style="color:#9a3412">🔴 Harvest Now, Decrypt Later — The Clock is Already Running</div>
+      <div class="action-body">
+        Because this site uses classical key exchange, adversaries can <strong>record your encrypted session right now</strong>
+        and store it indefinitely. When a sufficiently powerful quantum computer arrives, they decrypt it.
+        <br><br>
+        <strong>Who estimates what timeline?</strong><br>
+        • <strong>NSA / CISA (US)</strong>: plan for Q-Day between 2030–2035. Already mandating quantum migration for US federal agencies.<br>
+        • <strong>NIST (US standards body)</strong>: finalised PQC standards in 2024 (FIPS 203/204/205) citing urgency.<br>
+        • <strong>GCHQ / NCSC (UK)</strong>: recommends migration complete by 2035.<br>
+        • <strong>IBM / Google</strong>: predict 1 million qubit machines within this decade.<br>
+        <br>
+        <strong>Who is most at risk?</strong> Data with a long secrecy horizon — medical records, financial data,
+        government communications, legal documents, anything that needs to stay private for 10+ years.
+        <br><br>
+        <strong>What the site owner should do:</strong> Enable TLS 1.3 with X25519+ML-KEM-768 hybrid key exchange.
+        Major CDNs like Cloudflare, Fastly, and AWS CloudFront already support this.
+      </div>
+      <div class="timeline">
+        <div class="tl-safe" style="width:0%"></div>
+        <div class="tl-danger" style="background:#9a3412"></div>
+      </div>
+      <div class="tl-labels"><span>2020 (harvest begins)</span><span>▲ Now (2026)</span><span>2030–35 (CRQC)</span></div>
+      <div class="tl-note">🔴 Harvest risk is active today — traffic recorded now could be decrypted when CRQCs arrive</div>
+    </div>`;
+  } else {
+    html += `
+    <div class="action-card" style="border-left-color:#14532d;background:#f0fdf4">
+      <div class="action-title" style="color:#14532d">✅ Immune to Harvest Now, Decrypt Later</div>
+      <div class="action-body">
+        This site uses a <strong>quantum-safe key exchange</strong> — meaning traffic recorded today cannot be
+        decrypted by a future quantum computer, no matter how powerful. The "Harvest Now, Decrypt Later"
+        attack does not apply here.
+        <br><br>
+        <strong>Why this matters:</strong> Most websites today are still vulnerable to this attack — adversaries
+        can record encrypted sessions now and store them until quantum computers arrive. This site has already
+        migrated to post-quantum key exchange, putting it ahead of the vast majority of the internet.
+      </div>
+      <div class="timeline">
+        <div class="tl-safe" style="width:100%;background:#86efac"></div>
+        <div class="tl-danger" style="background:#14532d;width:0%"></div>
+      </div>
+      <div class="tl-labels"><span>2020</span><span>▲ Now (2026)</span><span>2030–35 (CRQC)</span></div>
+      <div class="tl-note">✅ Session traffic is safe from harvest attacks — past, present, and future</div>
+    </div>`;
+  }
+
+  if (impersonation_risk) {
+    const chainNote = chainDepth > 1
+      ? `<br><br><strong>Why are there ${impersonation_count} findings for certificates?</strong><br>
+         This is <em>one shared problem</em>, not ${impersonation_count} independent risks. Every website's
+         identity depends on a chain of trust — the leaf cert is signed by an intermediate CA, which is
+         signed by a root CA. All links in the chain must be quantum-safe for the chain to be secure.<br><br>
+         <strong>Chain inspected:</strong><br>${chainBreakdown}`
+      : "";
+    html += `
+    <div class="action-card" style="border-left-color:#92400e;background:#fffbeb">
+      <div class="action-title" style="color:#92400e">🟡 Certificate Trust Chain — Future Forgery Risk, Not Immediate</div>
+      <div class="action-body">
+        <strong>What this means:</strong> Every HTTPS website has a "chain of trust" — like a chain of notarised
+        documents. Your browser trusts the website because a Certificate Authority (CA) vouched for it,
+        and your operating system trusts that CA. A quantum computer could eventually forge any link in this chain,
+        allowing an attacker to impersonate the website.
+        <br><br>
+        <strong>Crucially:</strong> this attack requires an active CRQC <em>at the time of the attack</em>.
+        It cannot be used to expose past sessions. Past sessions are <strong>safe from this specific risk</strong>.
+        <br><br>
+        <strong>What the timeline looks like:</strong><br>
+        • ✅ Safe today — no quantum computer capable of this exists yet<br>
+        • ⚠️ Risk begins when CRQCs are deployed, estimated <strong>2029–2035</strong><br>
+        • 🔄 CAs (DigiCert, Let's Encrypt, Google Trust Services) are planning ML-DSA migration<br>
+        • 📋 NIST finalised ML-DSA (FIPS 204) in 2024 — CA ecosystem is catching up<br>
+        ${chainNote}
+      </div>
+      <div class="timeline">
+        <div class="tl-safe" style="width:50%"></div>
+        <div class="tl-danger" style="background:#92400e;flex:1"></div>
+      </div>
+      <div class="tl-labels"><span>2020</span><span style="color:#92400e;font-weight:500">▲ 2026 — safe, approaching risk window</span><span>2030–35 (CRQC)</span></div>
+      <div class="tl-note">🟡 Safe today — risk activates only when a cryptographically relevant quantum computer is running, estimated 2029–2035</div>
+    </div>`;
+  }
+
+
+  html += `</div>`;
+
+  // Headers
+  if (meta.hsts !== undefined) {
+    html += `
+    <div class="section fade-up">
+      <div class="section-header">
+        <div class="section-numeral" style="font-size:18px">🌐</div>
+        <div><div class="section-title">Other Security Signals</div></div>
+      </div>
+      <div class="cert-meta">
+        <div class="cert-row">
+          <span class="cert-key jargon" data-tip="HSTS">HSTS</span>
+          <span class="cert-val" style="color:${meta.hsts?'#14532d':'#9a3412'}">
+            ${meta.hsts ? "✓ Enabled — browsers forced to always use HTTPS" : "✗ Not set — browsers may connect over unencrypted HTTP"}
+          </span>
+        </div>
+        ${meta.server ? `<div class="cert-row"><span class="cert-key">Server</span><span class="cert-val">${meta.server}</span></div>` : ""}
+        ${meta.alpn   ? `<div class="cert-row"><span class="cert-key">Protocol</span><span class="cert-val">${meta.alpn}</span></div>` : ""}
+      </div>
+    </div>`;
+  }
+
+  document.getElementById("results").innerHTML = html;
+}
+
+
+function categorySummary(category, findings, hndl_risk, meta) {
+  meta = meta || {};
+  let title = "", body = "", color = "#5a5040", bg = "#f5f0e8", border = "#c8bfaa";
+
+  if (category === "kex") {
+    if (!hndl_risk) {
+      title = "✅ Nothing to do — key exchange is quantum-safe";
+      body  = "This site already negotiates <strong>X25519+ML-KEM-768</strong> hybrid key exchange. Traffic recorded today cannot be decrypted by a future quantum computer. No configuration change is needed.";
+      color = "#14532d"; bg = "#f0fdf4"; border = "#86efac";
+    } else {
+      title = "⚠️ Action available — enable quantum-safe key exchange";
+
+      // Direct server config path
+      const server_block =
+        `<strong>If your organisation controls the TLS termination point:</strong> Configure your TLS stack to negotiate the <strong>X25519+ML-KEM-768</strong> hybrid group.<br><br>` +
+        `<strong>If you use a CDN or reverse proxy:</strong> Many CDNs (Cloudflare, Fastly, AWS CloudFront, etc.) negotiate X25519+ML-KEM-768 automatically with browser clients. Note that PQC negotiation may not extend to non-browser API clients depending on CDN settings.`;
+
+      body  = server_block;
+      color = "#9a3412"; bg = "#fff7ed"; border = "#fdba74";
+    }
+  }
+
+  else if (category === "cert") {
+    const certChain = meta.cert_chain || [];
+    const hasLeaf = findings.some(f => f.context && f.context.includes("Leaf"));
+    const hasIntermediate = findings.some(f => f.context && f.context.includes("Intermediate"));
+    const hasRoot = findings.some(f => f.context && f.context.includes("Root"));
+
+    title = "🕐 No action possible right now — this is a future ecosystem problem";
+    let parts = [];
+    if (hasLeaf) parts.push("<strong>Leaf certificate:</strong> No certificate authority currently issues quantum-safe certificates, and no browser validates them. This is a known gap across the entire internet — watch for CA support expected in 2026–2027.");
+    if (hasIntermediate) parts.push("<strong>Intermediate CA:</strong> This must be upgraded by the issuing CA, not the website owner. Expected 2027–2030.");
+    if (hasRoot) parts.push("<strong>Root CA:</strong> Requires coordinated migration across the CA, browser vendors, and OS makers. Expected 2028–2033.");
+    body = parts.join("<br><br>");
+    color = "#92400e"; bg = "#fffbeb"; border = "#fcd34d";
+  }
+
+  else if (category === "sym") {
+    const hasBad = findings.some(f => ["CRITICAL","HIGH","MEDIUM"].includes(f.threat));
+    if (!hasBad) {
+      title = "✅ Nothing to do — symmetric cipher is quantum-safe";
+      body  = "AES-256-GCM and ChaCha20-Poly1305 have 256-bit keys, giving 128-bit post-quantum security after Grover's algorithm — well above the safety threshold.";
+      color = "#14532d"; bg = "#f0fdf4"; border = "#86efac";
+    } else {
+      title = "⚠️ Action available — upgrade symmetric cipher";
+      body  = "Replace AES-128 with <strong>AES-256-GCM</strong> or <strong>ChaCha20-Poly1305</strong>. Grover's algorithm halves effective key length — AES-128 drops to 64-bit post-quantum security, which is insufficient. This is configurable in your TLS cipher suite priority list.";
+      color = "#9a3412"; bg = "#fff7ed"; border = "#fdba74";
+    }
+  }
+
+  return `
+  <div class="action-card" style="border-left-color:${color};background:${bg};margin-top:12px">
+    <div class="action-title" style="color:${color}">${title}</div>
+    <div class="action-body">${body}</div>
+  </div>`;
+}
+
+function findingCard(f, chain, hndl_risk) {
+  const s  = threatStyle(f.threat);
+  const id = "d" + Math.random().toString(36).slice(2,9);
+  const plain   = ALGO_PLAIN[f.algo]       || f.context || "";
+  const howQ    = ALGO_HOW_QUANTUM[f.algo] || "";
+
+  let whatToDo = ALGO_WHAT_TO_DO[f.algo] || f.migrate || "";
+  if (whatToDo === "__TLS13__") {
+    whatToDo = hndl_risk
+      ? "TLS 1.3 is active — also enable X25519+ML-KEM-768 hybrid key exchange to protect against harvest attacks."
+      : "Nothing to do — TLS 1.3 is active and the key exchange is already quantum-safe.";
+  }
+  const ctx = f.context || "";
+
+  const CA_OPERATORS = {
+    "WR2":"Google (WR2)","WR3":"Google (WR3)","WE1":"Google (WE1)","WE2":"Google (WE2)",
+    "GTS CA 1C3":"Google (GTS CA 1C3)","GTS CA 1D4":"Google (GTS CA 1D4)","GTS CA 1P5":"Google (GTS CA 1P5)",
+    "GTS Root R1":"Google Trust Services (Root)","GTS Root R2":"Google Trust Services (Root)",
+    "GTS Root R3":"Google Trust Services (Root)","GTS Root R4":"Google Trust Services (Root)",
+    "R3":"Let's Encrypt (R3)","R10":"Let's Encrypt (R10)","R11":"Let's Encrypt (R11)",
+    "E1":"Let's Encrypt (E1)","E2":"Let's Encrypt (E2)",
+    "ISRG Root X1":"ISRG / Let's Encrypt (Root)","ISRG Root X2":"ISRG / Let's Encrypt (Root — ECDSA)",
+    "DigiCert Global Root CA":"DigiCert (Root)","DigiCert Global Root G2":"DigiCert (Root G2)",
+    "DigiCert Global Root G3":"DigiCert (Root G3 — ECDSA)",
+    "DigiCert SHA2 Secure Server CA":"DigiCert (SHA-2 Intermediate)",
+    "DigiCert TLS RSA SHA256 2020 CA1":"DigiCert (TLS Intermediate)",
+    "DigiCert EV RSA CA G2":"DigiCert (EV Intermediate)",
+    "DigiCert TLS Hybrid ECC SHA384 2020 CA1":"DigiCert (ECDSA Intermediate)",
+    "Sectigo RSA Domain Validation Secure Server CA":"Sectigo (DV Intermediate)",
+    "Sectigo ECC Domain Validation Secure Server CA":"Sectigo (ECC Intermediate)",
+    "COMODO RSA Certification Authority":"Sectigo / Comodo (Root)",
+    "COMODO ECC Certification Authority":"Sectigo / Comodo (ECC Root)",
+    "AAA Certificate Services":"Sectigo (AAA Root)",
+    "Amazon RSA 2048 M01":"Amazon (AWS Certificate Manager)",
+    "Amazon RSA 2048 M02":"Amazon (AWS Certificate Manager)",
+    "Amazon ECDSA 256 M01":"Amazon (AWS — ECDSA)",
+    "Amazon Root CA 1":"Amazon (Root CA 1)","Amazon Root CA 2":"Amazon (Root CA 2)",
+    "Amazon Root CA 3":"Amazon (Root CA 3 — ECDSA)","Amazon Root CA 4":"Amazon (Root CA 4 — ECDSA)",
+    "Starfield Services Root Certificate Authority - G2":"Amazon / Starfield (Root)",
+    "Cloudflare Inc ECC CA-3":"Cloudflare (ECC Intermediate)",
+    "Cloudflare Inc RSA CA-2":"Cloudflare (RSA Intermediate)",
+    "Microsoft Azure TLS Issuing CA 01":"Microsoft (Azure TLS CA)",
+    "Microsoft Azure TLS Issuing CA 02":"Microsoft (Azure TLS CA)",
+    "Microsoft Azure TLS Issuing CA 05":"Microsoft (Azure TLS CA)",
+    "Microsoft Azure TLS Issuing CA 06":"Microsoft (Azure TLS CA)",
+    "Microsoft RSA TLS CA 01":"Microsoft (RSA TLS Intermediate)",
+    "Microsoft RSA TLS CA 02":"Microsoft (RSA TLS Intermediate)",
+    "Baltimore CyberTrust Root":"Microsoft / DigiCert (Baltimore Root)",
+    "GlobalSign RSA OV SSL CA 2018":"GlobalSign (OV Intermediate)",
+    "GlobalSign ECC OV SSL CA 2018":"GlobalSign (ECC Intermediate)",
+    "GlobalSign Atlas R3 DV TLS CA 2024 Q2":"GlobalSign (Atlas DV Intermediate)",
+    "GlobalSign Root CA":"GlobalSign (Root)","GlobalSign Root CA - R3":"GlobalSign (Root R3)",
+    "GlobalSign Root CA - R6":"GlobalSign (Root R6 — ECDSA)",
+    "Entrust Certification Authority - L1K":"Entrust (L1K Intermediate)",
+    "Entrust Certification Authority - L1M":"Entrust (L1M Intermediate)",
+    "Entrust Root Certification Authority - G2":"Entrust (Root G2)",
+    "Entrust Root Certification Authority - G4":"Entrust (Root G4 — ECDSA)",
+    "Go Daddy Secure Certificate Authority - G2":"GoDaddy (Intermediate)",
+    "Go Daddy Root Certificate Authority - G2":"GoDaddy (Root)",
+    "QuoVadis Root CA 2 G3":"QuoVadis / DigiCert (Root)",
+    "QuoVadis TLS-B CA G2":"QuoVadis / DigiCert (Intermediate)",
+    "DST Root CA X3":"IdenTrust (DST Root — expired 2021, legacy)",
+    "IdenTrust Commercial Root CA 1":"IdenTrust (Root)",
+    "Buypass Class 2 Root CA":"Buypass (Root — Norway)",
+    "T-TeleSec GlobalRoot Class 2":"Deutsche Telekom (T-TeleSec Root)",
+    "Security Communication RootCA2":"SECOM Trust Systems (Japan Root)",
+    "SwissSign Gold CA - G2":"SwissSign (Switzerland Root)",
+    "Certum Trusted Network CA 2":"Certum / Asseco (Poland Root)",
+    "Network Solutions OV Server CA 2":"Network Solutions (Intermediate)",
+  };
+
+  const caNameMatch = ctx.match(/\(([^)]+)\)/);
+  const caName = caNameMatch ? caNameMatch[1] : null;
+  const caOperator = caName ? (CA_OPERATORS[caName] || caName) : null;
+
+  // Certificate signature findings — not actionable by website owners today
+  if (f.category === "Signature" && f.ftype === "sig_key") {
+    if (ctx.includes("Leaf")) {
+      whatToDo = "No action possible right now. No certificate authority currently issues quantum-safe certificates, and no browser validates them yet. This is a known gap across the entire internet — watch for CA support expected in 2026–2027.";
+    } else if (ctx.includes("Intermediate CA")) {
+      const caLabel = caOperator ? `<strong>${caOperator}</strong>` : "the certificate authority";
+      whatToDo = `This certificate belongs to ${caLabel}, not the website owner. The CA must upgrade their own infrastructure when browser and OS vendors add support — expected 2027–2030.`;
+    } else if (ctx.includes("Root CA")) {
+      const caLabel = caOperator ? `<strong>${caOperator}</strong>` : "this root authority";
+      whatToDo = `${caLabel} is embedded in every OS and browser. Root CA migration is a multi-year ecosystem effort coordinated between the CA, browser vendors, and OS makers. Expected timeline: 2028–2033.`;
+    }
+  }
+
+  const hasDetails = howQ || whatToDo;
+
+  return `
+  <div class="finding-card" style="background:${s.bg};border-color:${s.border}">
+    <div class="finding-top">
+      <div>
+        <div class="finding-algo" style="color:${s.color}">${f.algo}</div>
+        <div class="finding-plain">${plain}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="status-pill" style="color:${s.color};background:${s.bg};border-color:${s.border}">${s.emoji} ${s.label}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:5px;font-family:'IBM Plex Mono',monospace">${f.nist ? `<span class="jargon" data-tip="${f.nist}">${f.nist}</span>` : ""}</div>
+      </div>
+    </div>
+    ${hasDetails ? `
+    <button class="detail-toggle" onclick="toggleDetail('${id}',this)">
+      <span class="arr">▶</span> How does the quantum attack work? What should be done?
+    </button>
+    <div class="finding-details" id="${id}">
+      <div class="detail-grid">
+        ${howQ     ? `<div class="detail-label"><span class="jargon" data-tip="Quantum attack">How quantum computers attack this</span></div><div class="detail-value">${howQ}</div>` : ""}
+
+        <div class="detail-label"><span class="jargon" data-tip="Attack type">Attack type</span></div>
+        <div class="detail-value">${f.quantum ? `<span class="jargon" data-tip="${f.quantum}">${f.quantum}</span>` : "N/A"}</div>
+        <div class="detail-label"><span class="jargon" data-tip="NIST status">NIST status</span></div>
+        <div class="detail-value code">${f.nist ? `<span class="jargon" data-tip="${f.nist}">${f.nist}</span>` : "N/A"}</div>
+      </div>
+    </div>` : ""}
+  </div>`;
+}
+
+function certBlock(c, chain) {
+  const exp  = new Date(c.not_after);
+  const days = Math.round((exp - new Date()) / 86400000);
+  const col  = days < 30 ? "#9b1c1c" : days < 90 ? "#92400e" : "#14532d";
+
+  let chainHtml = "";
+  if (chain && chain.length >= 1) {
+    const roleIcon  = { leaf:"🌿", intermediate:"🔗", root:"🏛" };
+    const roleLabel = { leaf:"Leaf cert (this site)", intermediate:"Intermediate CA (vouches for the leaf)", root:"Root CA (trusted by your OS/browser)" };
+
+    const hasRoot = chain.some(c2 => c2.role === "root");
+    const displayChain = hasRoot ? chain : [
+      ...chain,
+      { role:"root", subject:"(not provided by server — stored in your OS/browser trust store)" }
+    ];
+
+    const arrows = displayChain.map((c2, i) => {
+      const icon  = roleIcon[c2.role]  || "📄";
+      const label = roleLabel[c2.role] || c2.role;
+      const isPlaceholder = c2.subject && c2.subject.startsWith("(not provided");
+      const subjectStyle = isPlaceholder
+        ? "color:var(--muted);font-style:italic"
+        : "color:var(--ink)";
+      const arrow = i < displayChain.length - 1
+        ? `<div style="color:var(--rule2);font-size:10px;padding:2px 0 2px 10px;font-family:'IBM Plex Mono',monospace">↑ signed by</div>`
+        : "";
+      return `<div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:3px 0">
+        <span style="font-size:13px">${icon}</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;${subjectStyle}">${c2.subject||"N/A"}</span>
+        <span style="color:var(--muted);font-size:10.5px">${label}</span>
+      </div>${arrow}`;
+    }).reverse().join("");
+
+    chainHtml = `
+    <div style="margin-top:10px;padding:10px 12px;background:var(--paper);border:1px solid var(--rule);border-radius:2px">
+      <div style="font-size:9px;color:var(--muted);font-weight:600;letter-spacing:.18em;margin-bottom:8px;font-family:'IBM Plex Mono',monospace;text-transform:uppercase">Trust Chain (root → leaf)</div>
+      ${arrows}
+    </div>`;
+  }
+
+  return `
+  <div class="cert-meta">
+    <div class="cert-row"><span class="cert-key">Website</span><span class="cert-val">${c.subject}</span></div>
+    <div class="cert-row"><span class="cert-key">Issued by</span><span class="cert-val">${c.issuer}</span></div>
+    <div class="cert-row"><span class="cert-key">Expires</span><span class="cert-val" style="color:${col}">${c.not_after} — ${days} days left</span></div>
+    ${chainHtml}
+  </div>`;
+}
+
+function toggleDetail(id, btn) {
+  const el = document.getElementById(id);
+  el.classList.toggle("open");
+  btn.querySelector(".arr").textContent = el.classList.contains("open") ? "▼" : "▶";
+}
+
+document.getElementById("domain-input").addEventListener("keydown", e => { if (e.key==="Enter") scan(); });
+</script>
+
+
+
+
+<div id="tip"></div>
+<script>
+const TIPS = {
+  "Legacy Only":     "<strong>Legacy Only</strong> — Still works, but past its recommended lifespan. Like a car that passes inspection but shouldn't be on the road much longer.",
+  "Conditional":     "<strong>Conditional</strong> — Safe only under strict server configuration. A stepping stone, not a destination.",
+  "Deprecated":      "<strong>Deprecated</strong> — Officially retired. Servers should no longer offer or accept this.",
+  "Withdrawn":       "<strong>Withdrawn</strong> — Banned. Known to be broken or dangerously weak.",
+  "Pre-FIPS draft":  "<strong>Pre-FIPS draft</strong> — An earlier pre-standardisation version. For Kyber/X25519+Kyber768 specifically, this code point is being actively deprecated by the IETF and should be replaced with the finalised X25519+ML-KEM-768. For Dilithium/Falcon/SPHINCS+, these are earlier names for what became ML-DSA, FN-DSA, and SLH-DSA.",
+  "Approved":        "<strong>Approved</strong> — Meets current government standards, but not yet quantum-safe at this key size.",
+  "FIPS 203 (2024)": "<strong>FIPS 203</strong> — The US government standard for quantum-safe key exchange, finalised in 2024. The gold standard right now.",
+  "FIPS 204 (2024)": "<strong>FIPS 204</strong> — The US government standard for quantum-safe digital signatures, finalised in 2024.",
+  "FIPS 205 (2024)": "<strong>FIPS 205</strong> — The US government standard for hash-based quantum-safe signatures, finalised in 2024.",
+  "FIPS 206 (2024)": "<strong>FIPS 206</strong> — The US government standard for lattice-based quantum-safe signatures (Falcon), finalised in 2024.",
+  "IETF Draft":      "<strong>IETF Draft</strong> — A proposed internet standard still going through the IETF process (draft-ietf-tls-ecdhe-mlkem, currently at revision 04). Widely deployed by Google, Cloudflare, and Apple, but not yet a finalised RFC. IANA has registered the code points with ‘Recommended: N’ pending finalisation.",
+  "RFC 8439":        "<strong>RFC 8439</strong> — A finalised internet standard for ChaCha20-Poly1305 encryption. Fully current.",
+  "FIPS 197":        "<strong>FIPS 197</strong> — The long-standing US government standard for AES encryption. Fully current.",
+
+  "Shor's":     "<strong>Shor's algorithm</strong> — A quantum algorithm that efficiently breaks RSA and elliptic curve encryption by solving the underlying maths. A large quantum computer running this could crack today's certificates and key exchanges.",
+  "Shor’s":     "<strong>Shor’s algorithm</strong> — A quantum algorithm that efficiently breaks RSA and elliptic curve encryption by solving the underlying maths. A large quantum computer running this could crack today’s certificates and key exchanges.",
+  "Grover's":   "<strong>Grover's algorithm</strong> — A quantum algorithm that halves the effective security of symmetric keys. A 128-bit key would behave like a 64-bit key. A 256-bit key still has enough headroom.",
+  "Grover’s":   "<strong>Grover’s algorithm</strong> — A quantum algorithm that halves the effective security of symmetric keys. A 128-bit key would behave like a 64-bit key. A 256-bit key still has enough headroom.",
+  "Resistant":       "<strong>Quantum-resistant</strong> — Built on maths that quantum computers cannot efficiently solve.",
+  "Classical KEX":   "<strong>Classical key exchange</strong> — The key exchange uses pre-quantum algorithms. TLS 1.3 itself is good, but the key exchange inside may still need upgrading.",
+  "Depends":         "<strong>Depends on configuration</strong> — TLS 1.2 can be safe or unsafe depending on how the server is set up.",
+  "N/A":             "<strong>N/A</strong> — Not applicable. This protocol is broken for non-quantum reasons.",
+
+  "NIST status":     "<strong>NIST</strong> is the US National Institute of Standards and Technology — the body that approves cryptographic standards worldwide. Their labels tell you if an algorithm is current, aging, or banned.",
+  "Attack type":     "<strong>Attack type</strong> — Which quantum algorithm is a threat here. Shor’s breaks public-key crypto; Grover’s weakens symmetric crypto.",
+
+  "TLS 1.3":         "<strong>TLS 1.3</strong> (Transport Layer Security) — The current recommended version of the web encryption protocol. Faster and more secure than 1.2.",
+  "TLS 1.2":         "<strong>TLS 1.2</strong> — Still widely used but has weaknesses depending on configuration. Most sites are here today.",
+  "TLSv1.3":         "<strong>TLS 1.3</strong> — The current recommended version of the web encryption protocol. Faster and more secure than 1.2.",
+  "TLSv1.2":         "<strong>TLS 1.2</strong> — Still widely used but has weaknesses depending on configuration.",
+  "TLS 1.0":         "<strong>TLS 1.0</strong> — Officially retired in 2021. Should not be offered by any server.",
+  "TLS 1.1":         "<strong>TLS 1.1</strong> — Officially retired in 2021. Should not be offered by any server.",
+  "TLS handshake":   "<strong>TLS handshake</strong> — The brief negotiation before any data is sent. Your browser and the server agree which algorithms to use and exchange encryption keys.",
+
+  "Leaf certificate":  "<strong>Leaf certificate</strong> — This website’s own certificate. Your browser checks it to confirm you’re talking to the right server.",
+  "Intermediate CA":   "<strong>Intermediate CA</strong> — A middleman certificate authority that vouches for the website’s certificate.",
+  "Root CA":           "<strong>Root CA</strong> (Certificate Authority) — A highly trusted organisation whose certificate is pre-installed in your browser or OS. It ultimately vouches for the whole chain.",
+
+  "ECDSA":  "<strong>ECDSA</strong> — The most common way websites sign certificates today. Uses elliptic curve maths, which Shor’s algorithm can break on a quantum computer.",
+  "RSA":    "<strong>RSA</strong> — The classic public-key algorithm. Relies on factoring large numbers — which quantum computers can do efficiently.",
+  "ML-KEM": "<strong>ML-KEM</strong> (Module Lattice Key Encapsulation) — The new NIST-approved quantum-safe key exchange standard (FIPS 203). Built on lattice maths that quantum computers cannot solve.",
+  "ML-DSA": "<strong>ML-DSA</strong> (Module Lattice Digital Signature) — The new NIST-approved quantum-safe signature standard (FIPS 204). Replaces ECDSA and RSA signatures.",
+  "X25519": "<strong>X25519</strong> — A fast, modern elliptic curve key exchange. Widely used, but still vulnerable to Shor’s algorithm.",
+  "HSTS":   "<strong>HSTS</strong> (HTTP Strict Transport Security) — Tells browsers to always use HTTPS, never plain HTTP. Prevents certain downgrade attacks.",
+
+  "Recommended":      "<strong>Recommended</strong> — The current best practice. This is what you want to see.",
+  "Legacy":           "<strong>Legacy</strong> — Old but still in use. Not banned, but should be replaced when possible.",
+  "Deprecated 2021":  "<strong>Deprecated in 2021</strong> — Officially retired by the IETF in 2021. Servers should no longer accept this.",
+  "Deprecated 2022":  "<strong>Deprecated in 2022</strong> — Officially retired in 2022. Should not be in active use.",
+  "Deprecated 2023":  "<strong>Deprecated in 2023</strong> — Officially retired in 2023. Should not be in active use.",
+  "Mode Insecure":    "<strong>Mode Insecure</strong> — The key size is fine but the mode of operation (ECB) is broken. It encrypts identical blocks identically, leaking patterns in the data.",
+  "FIPS 180-4":       "<strong>FIPS 180-4</strong> — The US government standard for SHA hash functions (SHA-256, SHA-384, SHA-512). A long-standing, trusted standard.",
+  "FIPS 202":         "<strong>FIPS 202</strong> — The US government standard for SHA-3 hash functions. A more modern design than SHA-2, also trusted.",
+  "RFC 3713":         "<strong>RFC 3713</strong> — The internet standard for Camellia encryption, a Japanese cipher. Technically sound but not widely deployed in the West.",
+  "RFC 6209":         "<strong>RFC 6209</strong> — The internet standard for ARIA encryption, the Korean national cipher. Technically sound but rarely seen outside Korea.",
+  "GB/T 32905":       "<strong>GB/T 32905</strong> — The Chinese national standard for SM3, a hash function. Mandatory in China; quantum-safe for now but uses 256-bit output.",
+  "GB/T 32907":       "<strong>GB/T 32907</strong> — The Chinese national standard for SM4, a symmetric cipher. Uses 128-bit keys — weakened but not broken by Grover’s algorithm.",
+  "GB/T 32918":       "<strong>GB/T 32918</strong> — The Chinese national standard for SM2, an elliptic curve algorithm. Vulnerable to Shor’s algorithm on a quantum computer, like ECDSA.",
+  "HNDL":   "<strong>Harvest Now, Decrypt Later</strong> — An attack where someone records your encrypted traffic today and waits until quantum computers can decrypt it.",
+};
+
+const tip = document.getElementById('tip');
+
+function showTip(el) {
+  const key = el.dataset.tip || (el.dataset.tipTls ? el.textContent.trim() : null);
+  if (!key) return;
+  const text = TIPS[key] || TIPS[key.replace('v','').replace('1_','1.')] || null;
+  if (!text) return;
+  tip.innerHTML = text;
+  tip.style.display = 'block';
+  const r = el.getBoundingClientRect();
+  let left = r.left;
+  let top  = r.bottom + 10;
+  if (left + 268 > window.innerWidth - 8) left = window.innerWidth - 276;
+  if (left < 8) left = 8;
+  if (r.bottom + 180 > window.innerHeight) top = r.top - tip.offsetHeight - 10;
+  tip.style.left = left + 'px';
+  tip.style.top  = top  + 'px';
+}
+
+function hideTip() { tip.style.display = 'none'; }
+
+document.addEventListener('mouseover', e => {
+  const el = e.target.closest('.jargon');
+  if (el) showTip(el); else hideTip();
+});
+document.addEventListener('click', e => {
+  const el = e.target.closest('.jargon');
+  if (el) { showTip(el); e.stopPropagation(); }
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('.jargon')) hideTip();
+}, true);
+</script>
+
+</body>
+</html>
